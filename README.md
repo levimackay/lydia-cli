@@ -14,12 +14,12 @@ GitHub Copilot Workspace, built for anyone who wants that workflow without
 paying for API usage or sending code to a third party.
 
 ```
-   ██     ██╗  ██╗   ██╗██████╗ ██╗ █████╗
-  ████    ██║  ╚██╗ ██╔╝██╔══██╗██║██╔══██╗
- ██████   ██║   ╚████╔╝ ██║  ██║██║███████║
- ██████   ██║    ╚██╔╝  ██║  ██║██║██╔══██║
-  ████    ███████╗██║   ██████╔╝██║██║  ██║
-   ██     ╚══════╝╚═╝   ╚═════╝ ╚═╝╚═╝  ╚═╝
+   ██     ██╗  ██╗   ██╗██████╗ ██╗ █████╗      ██████╗██╗     ██╗     ██
+  ████    ██║  ╚██╗ ██╔╝██╔══██╗██║██╔══██╗    ██╔════╝██║     ██║    ████
+ ██████   ██║   ╚████╔╝ ██║  ██║██║███████║    ██║     ██║     ██║   ██████
+ ██████   ██║    ╚██╔╝  ██║  ██║██║██╔══██║    ██║     ██║     ██║   ██████
+  ████    ███████╗██║   ██████╔╝██║██║  ██║    ╚██████╗███████╗██║    ████
+   ██     ╚══════╝╚═╝   ╚═════╝ ╚═╝╚═╝  ╚═╝     ╚═════╝╚══════╝╚═╝     ██
 
 ╭─────────────────╮
 │ model  qwen3.5  │
@@ -29,6 +29,12 @@ Type your request, or /help for commands. Ctrl-D to exit.
 
 Lydia (auto) > add input validation to the login handler and run the tests
 ```
+
+The wordmark is rendered live, not stored as art: `cli/ui.py` builds it with
+pyfiglet's `ansi_shadow` font, frames it with the block-diamond mark on both
+sides, and paints it in a blue → violet → pink gradient sampled across its
+width. In a terminal too narrow for the framed version it drops the icons,
+and below that falls back to plain text.
 
 ## Why
 
@@ -449,7 +455,7 @@ useful for a human too.
 ## Development
 
 ```bash
-.venv/bin/pytest                                    # CLI suite (367 tests, no Ollama required)
+.venv/bin/pytest                                    # CLI suite (376 tests, no Ollama required)
 .venv/bin/pytest tests/test_agent_loop.py            # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer  # one test
 
@@ -464,11 +470,12 @@ double. None of them require a running Ollama daemon.
 ## Roadmap
 
 Milestones 1 (core CLI), 2 (semantic retrieval), 3 (agent loop, tool
-calling, git workflows), 6 (persistent project memory), the client/server
-split (`server/`, remote inference over Tailscale), the personal-assistant
-layer (Gmail/Outlook/Canvas/stocks/AI news, scheduled briefings), session
-modes (plan/ask/auto), and Claude-Code-parity editing (`edit_file`,
-`multi_edit_file`, auto-verify, `update_todos`, `find_files`) are all done.
+calling, git workflows), 5 (the automations engine), 6 (persistent project
+memory), the client/server split (`server/`, remote inference over
+Tailscale), the personal-assistant layer (Gmail/Outlook/Canvas/stocks/AI
+news, scheduled briefings), voice mode, session modes (plan/ask/auto), and
+parity-level editing (`edit_file`, `multi_edit_file`, auto-verify,
+`update_todos`, `find_files`) are all done.
 See [`ROADMAP.md`](ROADMAP.md) for what's left — packaging, and the M7
 plugins stretch goal, plus deferred server work (real multi-user token
 storage, a task queue, non-Ollama providers) that the current design
@@ -478,12 +485,8 @@ doesn't block but doesn't need yet either.
 
 MIT — see [`LICENSE`](LICENSE).
 
-_Last updated: July 22, 2026_
-
-_Last reviewed: 2026-07-20 19:33 MDT_
-
 ---
-**Last updated:** 2026-08-13 14:59 MDT
+**Last updated:** 2026-08-13 15:20 MDT
 
 ---
 
