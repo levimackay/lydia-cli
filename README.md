@@ -486,7 +486,7 @@ doesn't block but doesn't need yet either.
 MIT — see [`LICENSE`](LICENSE).
 
 ---
-**Last updated:** 2026-08-14 13:57 MDT
+**Last updated:** 2026-08-15 11:34 MDT
 
 ---
 
