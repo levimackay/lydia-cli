@@ -491,3 +491,4 @@ MIT — see [`LICENSE`](LICENSE).
 ---
 
 Maintained by [Levi Mackay](https://github.com/levimackay)
+
