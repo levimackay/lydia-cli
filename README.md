@@ -484,10 +484,3 @@ doesn't block but doesn't need yet either.
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
-
----
-**Last updated:** 2026-08-20 07:11 MDT
-
----
-
-Maintained by [Levi Mackay](https://github.com/levimackay)
