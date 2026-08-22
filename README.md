@@ -481,6 +481,16 @@ plugins stretch goal, plus deferred server work (real multi-user token
 storage, a task queue, non-Ollama providers) that the current design
 doesn't block but doesn't need yet either.
 
+## Contributing
+
+Bug reports and PRs are welcome — a few have already landed (a Linux
+scheduler backend, a config bug fix, a CI fix). See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, how the test suite works,
+and what to check before opening a PR; [`ROADMAP.md`](ROADMAP.md) for
+what's next and why past ordering decisions were made the way they were;
+[`CLAUDE.md`](CLAUDE.md) for the architecture and the Ollama-integration
+gotchas that aren't obvious from the code alone.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
