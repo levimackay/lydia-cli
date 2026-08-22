@@ -5,10 +5,17 @@ standard way to configure that (systemd/Task Scheduler unit, docker, or
 just a launch script) without a secrets-bearing file to accidentally
 commit.
 
-Token storage today is a flat env-var-sourced mapping (see `_load_tokens`).
-That's deliberately the *only* thing that would need to change to support
-real multi-user accounts later — nothing in `auth/bearer.py` or the API
-routes needs to change, since they only ever call `settings.tokens.get(...)`.
+Token storage is a SQLite-backed `TokenStore` (see `database/tokens.py`),
+not a plain dict — real multi-user accounts, with expiry and revocation,
+that survive without a restart. `LYDIA_SERVER_TOKEN`/`LYDIA_SERVER_TOKENS`
+below are still the bootstrap mechanism (a fresh single-user setup still
+needs zero steps beyond setting one env var, same as before this
+changed); every token they name gets (re-)seeded into the store on every
+startup. To add or revoke a token at runtime without an env var or a
+restart, use the `lydia-server-token` CLI (`cli.py`), which reads and
+writes the same database file. Nothing in `auth/bearer.py` or the API
+routes changed for this — they only ever call `settings.tokens.get(...)`,
+which `TokenStore` also implements.
 """
 
 from __future__ import annotations
@@ -16,25 +23,36 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
+
+from lydia_server.database.tokens import TokenStore
+
+DEFAULT_TOKENS_DB_PATH = Path.home() / ".lydia" / "server" / "tokens.sqlite3"
 
 
-def _load_tokens() -> dict[str, str]:
-    """token -> user_id.
+def _load_tokens() -> TokenStore:
+    """Opens (creating if needed) the token store at LYDIA_SERVER_TOKENS_DB
+    (default: ~/.lydia/server/tokens.sqlite3), then seeds it from env vars:
 
     `LYDIA_SERVER_TOKEN=<token>` for a quick single-user setup, or
     `LYDIA_SERVER_TOKENS="token1:alice,token2:bob"` for more than one.
-    Both may be set at once.
+    Both may be set at once. Tokens added at runtime via `lydia-server-token`
+    and never named in an env var are left alone — this only ever adds/
+    refreshes the env-var-named ones, never removes anything.
     """
-    tokens: dict[str, str] = {}
+    db_path = Path(os.environ.get("LYDIA_SERVER_TOKENS_DB", str(DEFAULT_TOKENS_DB_PATH)))
+    store = TokenStore(db_path)
+
     single = os.environ.get("LYDIA_SERVER_TOKEN")
     if single:
-        tokens[single] = "default"
+        store.add(single, "default")
     multi = os.environ.get("LYDIA_SERVER_TOKENS", "")
     for pair in filter(None, (p.strip() for p in multi.split(","))):
         token, _, user_id = pair.partition(":")
         if token:
-            tokens[token] = user_id or token
-    return tokens
+            store.add(token, user_id or token)
+
+    return store
 
 
 @dataclass
@@ -47,7 +65,11 @@ class ServerSettings:
     ollama_host: str = field(
         default_factory=lambda: os.environ.get("LYDIA_SERVER_OLLAMA_HOST", "http://localhost:11434")
     )
-    tokens: dict[str, str] = field(default_factory=_load_tokens)
+    # A real ServerSettings holds a TokenStore; tests often pass a plain
+    # dict directly instead (a lighter-weight fake — `.get()`/`.__len__()`
+    # both mean the same thing on either), so this stays typed as the
+    # narrower shape both satisfy rather than TokenStore specifically.
+    tokens: TokenStore | dict[str, str] = field(default_factory=_load_tokens)
     # Optional TLS — point these at a `tailscale cert`-issued key/cert pair
     # to serve HTTPS directly; unset runs plain HTTP (fine for local dev,
     # or if TLS is terminated by something in front of this process).

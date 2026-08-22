@@ -158,6 +158,35 @@ context — each one names the files to touch and what "done" looks like.
   existing `/v1/models`, `/v1/embed`, `/v1/chat` tests in `test_v1.py`
   updated from asserting the old close-after-every-request behavior to
   asserting the new share-across-requests one.
+- **Real multi-user token storage (2026-08-22).** `config/settings.py`'s
+  `{token: user_id}` dict, built once from env vars at startup, is now a
+  SQLite-backed `TokenStore` (`database/tokens.py`) — tokens can be
+  added, expired, and revoked while the server keeps running, with no
+  restart. `LYDIA_SERVER_TOKEN`/`LYDIA_SERVER_TOKENS` are still the
+  bootstrap mechanism (re-seeded into the store on every startup, so a
+  fresh single-user setup needs zero extra steps), stored at
+  `~/.lydia/server/tokens.sqlite3` by default (override with
+  `LYDIA_SERVER_TOKENS_DB`). Tokens are hashed (SHA-256) before being
+  written to disk — the env-var approach this replaces never touched
+  disk at all, so this is what keeps the new file from being a plaintext
+  credential dump. `auth/bearer.py`'s `settings.tokens.get(token)` call
+  site and `main.py`'s `if not settings.tokens:` startup guard both
+  needed zero changes — `TokenStore` implements `.get()` and `__len__()`
+  to match, exactly the seam the original design left for this.
+  New `lydia-server-token add/revoke/list` CLI (`cli.py`) for managing
+  tokens without touching SQLite directly; `add` prints the raw token
+  exactly once (only its hash is ever stored, so it can't be shown
+  again). Verified against a real running server, not just tests: added
+  a token via the CLI while the server was already running and used it
+  immediately with no restart, then revoked a different token that was
+  actively working and confirmed the very next request with it got a
+  401 — proving both directions (grant and revoke) take effect live. 25
+  new tests: `test_token_store.py` (add/get/expire/revoke/re-add/persist-
+  across-reopen, plus a direct check that raw tokens never land in the
+  database), `test_settings.py` (env-var seeding, and specifically that
+  a runtime-added token survives a simulated restart with no env var
+  naming it), `test_cli.py` (all three subcommands, including that
+  revoked/listed output never contains a raw token).
 - **Voice mode (2026-07-18).** Always-listening voice assistant — say "Hey Jarvis"
   to trigger the model, ask a question, and hear a spoken reply. `lydia listen`
   runs the loop in the foreground; `lydia listen enable/disable/status` manage
@@ -197,11 +226,6 @@ extends (a new tool? a new slash command? both?) before writing code.
 Not started, not blocked by the current design — see `server/README.md`
 and `ROADMAP.md`'s history for the client/server split entry above:
 
-- **Real multi-user token storage.** Today's `{token: user_id}` dict
-  sourced from env vars is enough for one person. A real store (SQLite,
-  expiry, revocation) only needs `config/settings.py::_load_tokens` and
-  wherever it's read from to change — the auth dependency's interface
-  (`settings.tokens.get(token)`) was deliberately kept stable for this.
 - **Non-Ollama providers** (OpenAI, Anthropic, Gemini) — opt-in, bring
   your own key, never the default (that would compromise the whole "no
   API keys required" premise for anyone not opting in). Each is just a

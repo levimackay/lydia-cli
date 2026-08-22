@@ -28,7 +28,7 @@ shared venv for local dev.
 .venv/bin/pytest tests/test_agent_loop.py                                   # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer # one test
 
-# Run the server package's test suite (22 tests) — has its own pyproject.toml,
+# Run the server package's test suite (46 tests) — has its own pyproject.toml,
 # so run it from server/, not the repo root
 cd server && ../.venv/bin/pytest
 
@@ -214,13 +214,15 @@ warning rather than erroring, so old config files don't break on upgrade.
 See `README.md` for the user-facing feature list and `ROADMAP.md` for the
 detailed next-steps plan. Short version: Milestones 1 (CLI + streaming
 chat), 2 (semantic retrieval), 3 (agent loop + tool calling + git), 6
-(persistent project memory), and the client/server split (`server/`,
-remote inference over Tailscale) are all done. What's left is mostly
-deferred server work that the current design doesn't block but doesn't
-need yet (real multi-user auth, non-Ollama providers, a task queue) plus
-M7 (plugins, no design started). Check `ROADMAP.md` before picking up new
-work — it has file-level pointers and the reasoning behind past ordering
-decisions (e.g. why M3 shipped before M2).
+(persistent project memory), the client/server split (`server/`, remote
+inference over Tailscale) with connection pooling and real SQLite-backed
+multi-user token storage on top of it, are all done. What's left is
+mostly deferred server work that the current design doesn't block but
+doesn't need yet (non-Ollama providers, a task queue, AMD GPU
+verification on the actual target hardware) plus M7 (plugins, no design
+started). Check `ROADMAP.md` before picking up new work — it has
+file-level pointers and the reasoning behind past ordering decisions
+(e.g. why M3 shipped before M2).
 
 ## Standing preferences for this repo
 

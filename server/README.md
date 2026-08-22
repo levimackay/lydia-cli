@@ -41,15 +41,28 @@ proxy on your network isn't something to start by accident.
 | `LYDIA_SERVER_HOST` | `127.0.0.1` | Bind address. Set to your Tailscale interface IP to accept tailnet connections. **Never set this to `0.0.0.0`** — that also listens on your raw LAN/any public interface, not just Tailscale. |
 | `LYDIA_SERVER_PORT` | `8000` | Bind port |
 | `LYDIA_SERVER_OLLAMA_HOST` | `http://localhost:11434` | Where this server's own Ollama is listening |
-| `LYDIA_SERVER_TOKEN` | none | A single bearer token, for a one-person setup |
-| `LYDIA_SERVER_TOKENS` | none | `token1:alice,token2:bob` for more than one user — both this and `LYDIA_SERVER_TOKEN` can be set at once |
+| `LYDIA_SERVER_TOKEN` | none | A single bearer token, for a one-person setup — seeded into the token store on every startup |
+| `LYDIA_SERVER_TOKENS` | none | `token1:alice,token2:bob` for more than one user, also seeded on every startup — both this and `LYDIA_SERVER_TOKEN` can be set at once |
+| `LYDIA_SERVER_TOKENS_DB` | `~/.lydia/server/tokens.sqlite3` | Where the token store lives. Tokens are hashed (SHA-256) before being written — this file never contains a raw token. |
 | `LYDIA_SERVER_SSL_KEYFILE` / `LYDIA_SERVER_SSL_CERTFILE` | none | TLS key/cert pair. See "HTTPS" below. |
 
-Token storage today is deliberately just a flat env-var-sourced dict
-(`config/settings.py::_load_tokens`) — the one thing that would need to
-grow for real multi-user accounts (a database, expiry, revocation) without
-anything in `auth/bearer.py` or the API routes changing, since they only
-ever call `settings.tokens.get(token)`.
+### Managing tokens without an env var or a restart
+
+`LYDIA_SERVER_TOKEN`/`LYDIA_SERVER_TOKENS` are a bootstrap mechanism, not
+the only way in — the store behind them is a real SQLite database
+(`database/tokens.py::TokenStore`), so tokens can be added, revoked, and
+given an expiry at runtime, with the server already running:
+
+```bash
+lydia-server-token add alice                    # prints a token once — copy it now
+lydia-server-token add bob --expires-in 86400    # expires in 24h
+lydia-server-token revoke <token>
+lydia-server-token list                          # user, status, created/expiry — never the raw token
+```
+
+These operate on whatever `LYDIA_SERVER_TOKENS_DB` points at, same as the
+running server — run it on the same machine (or point `LYDIA_SERVER_TOKENS_DB`
+at the same file) to manage a remote server's tokens.
 
 ## HTTPS
 
@@ -89,10 +102,12 @@ for talking to this server instead (`lydia.llm.remote_client.RemoteClient`).
 ```
 lydia_server/
 ├── main.py                 FastAPI app factory + lydia-server entry point
+├── cli.py                   lydia-server-token entry point
 ├── api/v1.py                the routes
 ├── auth/bearer.py           bearer-token dependency
-├── config/settings.py       env-var-sourced settings, token storage
-├── services/ollama_provider.py   builds the ModelClient this server proxies to
+├── config/settings.py       env-var-sourced settings, seeds the token store
+├── database/tokens.py        SQLite-backed TokenStore (add/get/revoke/expiry)
+├── services/ollama_provider.py   builds + pools the ModelClient this server proxies to
 └── models/chat.py           Pydantic request/response schemas
 ```
 
@@ -106,5 +121,7 @@ another class satisfying that same protocol.
 ## Development
 
 ```bash
-pytest   # 22 tests, all against a fake ModelClient double — no real Ollama needed
+pytest   # 46 tests — chat/embed/models routes run against a fake ModelClient
+         # double, token storage against a real tmp_path SQLite file; no
+         # real Ollama needed either way
 ```

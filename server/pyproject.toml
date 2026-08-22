@@ -25,6 +25,7 @@ dev = [
 
 [project.scripts]
 lydia-server = "lydia_server.main:run"
+lydia-server-token = "lydia_server.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["lydia_server"]
