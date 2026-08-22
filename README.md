@@ -236,7 +236,25 @@ Layered JSON config — project overrides global:
 
 Local models are the whole point of Lydia, but they're not free-riding on a
 frontier hosted model's scale — a few things make a real difference on
-consumer hardware:
+consumer hardware.
+
+If a model is downloading forever or running too slowly to be usable, and
+[running a second, more powerful machine as a server](#running-lydia-server-remote-gpu-inference)
+isn't an option, the fix usually isn't "wait it out" — it's picking a
+model your hardware actually fits. [**llmfit**](https://github.com/AlexsJones/llmfit)
+detects your RAM/CPU/GPU and ranks every model in its catalog by fit,
+speed, quality, and context for your specific machine, before you spend
+time pulling one that was never going to run well:
+
+```bash
+llmfit fit                    # every model, ranked for your hardware
+llmfit recommend --json       # top picks as JSON
+```
+
+Then `ollama pull` whatever it recommends and point `lydia config set
+model <name>` at it (or let auto-selection find it — see below).
+
+A few things make a real difference beyond just picking the right size:
 
 - **Use a coding-specific model, not a generic chat model**, if your
   hardware allows it. `qwen2.5-coder` / `qwen3.5-coder` / `deepseek-coder`
