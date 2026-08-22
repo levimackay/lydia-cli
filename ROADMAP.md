@@ -136,6 +136,28 @@ context — each one names the files to touch and what "done" looks like.
     against a fake `ModelClient` double, no real Ollama needed.
   - Full design reasoning, API shapes, and the folder structure live in
     `server/README.md` and the plan this was built from.
+- **Connection pooling for the server's Ollama provider (2026-08-22).**
+  `api/v1.py::get_provider` used to construct a fresh `OllamaClient` — a
+  fresh `httpx.Client`, a fresh TCP connection — per request, then close
+  it in a `finally` block once that request finished. Now
+  `services/ollama_provider.py::get_shared_provider` returns one
+  process-wide `OllamaClient` per `ollama_host`, and routes no longer
+  close what they're handed; the pooled client is closed exactly once, in
+  `main.py`'s new `lifespan` context manager, on actual server shutdown.
+  `get_provider` (the FastAPI dependency) stays a plain function, not a
+  yield-dependency, for the same reason it always was — see the
+  docstring. Verified against a real Ollama daemon: started the real
+  server, made two consecutive `/v1/models` requests (both succeeded,
+  proving the shared client survives being reused, not just usable once)
+  and a real streaming `/v1/chat` completion, then a clean shutdown. 8 new
+  tests: `test_ollama_provider.py` (same host → same instance, different
+  host → different instance, `close_shared_providers` actually closes the
+  underlying connection and clears the cache so the next call builds
+  fresh) and `test_main.py` (the app's `lifespan` actually calls
+  `close_shared_providers` on shutdown, not just in theory) — plus the
+  existing `/v1/models`, `/v1/embed`, `/v1/chat` tests in `test_v1.py`
+  updated from asserting the old close-after-every-request behavior to
+  asserting the new share-across-requests one.
 - **Voice mode (2026-07-18).** Always-listening voice assistant — say "Hey Jarvis"
   to trigger the model, ask a question, and hear a spoken reply. `lydia listen`
   runs the loop in the foreground; `lydia listen enable/disable/status` manage
@@ -188,10 +210,6 @@ and `ROADMAP.md`'s history for the client/server split entry above:
 - **Task queue / background jobs, project indexing service, vector DB
   beyond the current SQLite approach, web dashboard.** All from the
   original project scoping; none designed yet.
-- **Connection pooling for the server's Ollama provider.** Right now
-  `api/v1.py::get_provider` constructs a fresh `OllamaClient` (and thus a
-  fresh httpx connection) per request — simple and correct for one user,
-  worth revisiting before "multiple concurrent users" is real.
 - **AMD GPU acceleration is unverified** on the actual target hardware
   (RX 9060 XT) — Ollama's AMD support runs through ROCm, better on Linux
   than Windows. `ollama ps` should show GPU usage during a request; if it

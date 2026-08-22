@@ -106,5 +106,5 @@ another class satisfying that same protocol.
 ## Development
 
 ```bash
-pytest   # 14 tests, all against a fake ModelClient double — no real Ollama needed
+pytest   # 22 tests, all against a fake ModelClient double — no real Ollama needed
 ```

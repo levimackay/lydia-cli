@@ -31,7 +31,7 @@ from lydia_server.models.chat import (
     ModelEntry,
     ModelsResponse,
 )
-from lydia_server.services.ollama_provider import build_provider
+from lydia_server.services.ollama_provider import get_shared_provider
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +39,19 @@ router = APIRouter(prefix="/v1")
 
 
 def get_provider(settings: ServerSettings = Depends(get_settings)) -> ModelClient:
-    """A fresh provider per request. Deliberately NOT a yield-dependency:
+    """The process-wide shared provider (see services/ollama_provider.py) —
+    NOT a fresh instance per request. Routes must not close what this
+    returns; its lifecycle is owned by the app (closed on shutdown, see
+    main.py's lifespan), not by any single request.
 
-    for the streaming /v1/chat route, FastAPI runs yield-dependency
-    teardown as soon as the endpoint function returns the Response object
-    — which for StreamingResponse is *before* the body has actually been
-    streamed. Closing the provider there would tear down its connection
-    mid-stream. Callers close it explicitly instead, after they're
-    actually done with it.
+    This is deliberately NOT a yield-dependency either way: for the
+    streaming /v1/chat route, FastAPI runs yield-dependency teardown as
+    soon as the endpoint function returns the Response object — which for
+    StreamingResponse is *before* the body has actually been streamed. A
+    yield-dependency here would tear down state before the response body
+    is done using it, regardless of what that teardown did.
     """
-    return build_provider(settings)
+    return get_shared_provider(settings)
 
 
 def _to_message(m: ChatMessage) -> Message:
@@ -73,8 +76,6 @@ def list_models(
         models = provider.list_models()
     except OllamaError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    finally:
-        provider.close()
     return ModelsResponse(models=[ModelEntry(name=m.name, size=m.size_bytes, modified_at=m.modified_at) for m in models])
 
 
@@ -88,8 +89,6 @@ def embed(
         vectors = provider.embed(body.model, body.input)
     except OllamaError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    finally:
-        provider.close()
     return EmbedResponse(embeddings=vectors)
 
 
@@ -118,7 +117,5 @@ def chat(
             # RemoteClient's parse_chat_line already expects this shape.
             logger.warning("chat_stream error for user=%s: %s", user, exc)
             yield json.dumps({"error": str(exc)}) + "\n"
-        finally:
-            provider.close()
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")

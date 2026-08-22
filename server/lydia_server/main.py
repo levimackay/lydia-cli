@@ -7,15 +7,28 @@ See config/settings.py for the full list of LYDIA_SERVER_* env vars.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from lydia_server import __version__
 from lydia_server.api.v1 import router as v1_router
 from lydia_server.config.settings import get_settings
+from lydia_server.services.ollama_provider import close_shared_providers
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    # Requests reuse one pooled provider per host (services/ollama_provider.py)
+    # instead of opening a fresh connection each time — this is where that
+    # connection actually gets closed, once, on shutdown.
+    close_shared_providers()
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Lydia Server", version=__version__)
+    app = FastAPI(title="Lydia Server", version=__version__, lifespan=_lifespan)
     app.include_router(v1_router)
     return app
 

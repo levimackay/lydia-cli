@@ -120,12 +120,49 @@ def test_chat_upstream_error_becomes_in_band_error_line(
     assert "model not found" in response.text
 
 
-def test_chat_closes_provider_after_streaming(
+def test_chat_does_not_close_provider_after_streaming(
     api_client: TestClient, auth_headers: dict, fake_provider: FakeProvider
 ) -> None:
+    """The provider is shared across requests (see test_ollama_provider.py),
+    so a single request must not close it — that would tear down the
+    connection every other in-flight or subsequent request also relies on."""
     api_client.post(
         "/v1/chat",
         json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
         headers=auth_headers,
     )
-    assert fake_provider.closed is True
+    assert fake_provider.closed is False
+
+
+def test_models_does_not_close_provider(
+    api_client: TestClient, auth_headers: dict, fake_provider: FakeProvider
+) -> None:
+    api_client.get("/v1/models", headers=auth_headers)
+    assert fake_provider.closed is False
+
+
+def test_embed_does_not_close_provider(
+    api_client: TestClient, auth_headers: dict, fake_provider: FakeProvider
+) -> None:
+    api_client.post("/v1/embed", json={"model": "m", "input": ["x"]}, headers=auth_headers)
+    assert fake_provider.closed is False
+
+
+def test_repeated_requests_share_the_same_provider_instance(
+    api_client: TestClient, auth_headers: dict, fake_provider: FakeProvider
+) -> None:
+    """api_client's override always hands back the same fake_provider
+    regardless of how many requests run, but list_models/embed/chat must
+    each accept that same instance via the get_provider dependency rather
+    than assuming a fresh one — this pins that nothing route-local tries to
+    construct its own."""
+    api_client.get("/v1/models", headers=auth_headers)
+    api_client.post("/v1/embed", json={"model": "m", "input": ["x"]}, headers=auth_headers)
+    api_client.post(
+        "/v1/chat",
+        json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+        headers=auth_headers,
+    )
+    assert fake_provider.closed is False
+    assert len(fake_provider.embed_calls) == 1
+    assert len(fake_provider.chat_calls) == 1

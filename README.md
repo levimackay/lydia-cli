@@ -459,7 +459,7 @@ useful for a human too.
 .venv/bin/pytest tests/test_agent_loop.py            # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer  # one test
 
-cd server && ../.venv/bin/pytest                    # server suite (14 tests, no Ollama required)
+cd server && ../.venv/bin/pytest                    # server suite (22 tests, no Ollama required)
 ```
 
 All tests are hermetic — the LLM client is tested against
