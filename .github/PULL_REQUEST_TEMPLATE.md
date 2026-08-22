@@ -5,7 +5,7 @@
 ## How it was tested
 
 <!--
-- `pytest` output (which package(s) — CLI, server, or both)
+- `pytest` output (which package(s): CLI, server, or both)
 - If you verified against a real Ollama daemon, which model and what you ran
 -->
 

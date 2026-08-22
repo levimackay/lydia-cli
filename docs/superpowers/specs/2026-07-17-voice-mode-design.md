@@ -1,4 +1,4 @@
-# Voice Mode ("Hey Jarvis") — Design
+# Voice Mode ("Hey Jarvis"): Design
 
 Date: 2026-07-17
 Status: Approved (design conversation with Levi; Approach A chosen)
@@ -7,30 +7,30 @@ Status: Approved (design conversation with Levi; Approach A chosen)
 
 An always-listening, fully local, $0 voice assistant on the MacBook Air: say the
 wake word, ask something out loud, Lydia answers out loud. Assistant-only
-capabilities — the safe connector tools (email, Canvas, stocks, news) and
-conversation — never file edits or shell commands by voice.
+capabilities only: the safe connector tools (email, Canvas, stocks, news) and
+conversation, never file edits or shell commands by voice.
 
 ## Constraints
 
 - Free forever, fully offline: no cloud STT/TTS, no API keys, no accounts.
-- Runs on the MacBook Air with local Ollama (`server_url` unset) — the
+- Runs on the MacBook Air with local Ollama (`server_url` unset), the
   summer-mode setup. Must not assume the gaming PC exists.
 - Wake word v1 is **"Hey Jarvis"** (openWakeWord's best pre-trained model).
   A custom "Hey Lydia" model is a stretch goal, not v1.
 - Mic is permanently hot when enabled; `lydia listen disable` must fully stop it.
 - Unit tests never touch the microphone, audio devices, model downloads, or a
-  live Ollama — every stage is behind an injectable interface.
+  live Ollama. Every stage is behind an injectable interface.
 
 ## New dependencies
 
 `openwakeword` (wake word, ONNX runtime), `faster-whisper` (STT), `sounddevice`
-(mic capture). TTS uses macOS `say` via subprocess — no dependency.
+(mic capture). TTS uses macOS `say` via subprocess, so no dependency.
 First run downloads the Whisper model (~150MB, cached in `~/.cache`).
 
 ## Architecture
 
 New `src/lydia/voice/` package, same layering rule as `automations/`: may import
-`agent/`, `llm/`, `config/` — **never `cli/`**.
+`agent/`, `llm/`, `config/`, but **never `cli/`**.
 
 ```
 voice/
@@ -44,8 +44,8 @@ voice/
 
 CLI (in `cli/main.py` + `cli/scheduler.py`, following existing patterns):
 
-- `lydia listen` — run the loop in the foreground, Ctrl-C to stop.
-- `lydia listen enable|disable|status` — third launchd agent
+- `lydia listen`: run the loop in the foreground, Ctrl-C to stop.
+- `lydia listen enable|disable|status`: third launchd agent
   `com.lydia.listen` (`RunAtLoad` + `KeepAlive` so it starts at login and
   restarts on crash), logging to `~/.lydia/listen.log`. Mirrors
   `enable_automations` exactly.
@@ -59,9 +59,9 @@ CLI (in `cli/main.py` + `cli/scheduler.py`, following existing patterns):
    Empty/garbage transcription → soft "didn't catch that" chime, back to step 1.
 4. One agent turn via the existing agent loop with:
    - a **filtered registry**: safe-risk connector tools only (`check_email`,
-     `check_canvas`, `check_stocks`, `check_news`, `notify`) — reuse the
+     `check_canvas`, `check_stocks`, `check_news`, `notify`), reusing the
      risk-tier filtering in `agent/tools.py`; `confirm=lambda _r: False`.
-   - a voice system prompt: answers are spoken aloud — 1–3 sentences, no
+   - a voice system prompt: answers are spoken aloud, so 1–3 sentences, no
      markdown, no lists, no code.
    - `keep_alive=config.keep_alive` as everywhere.
 5. Speak the reply with `say`. One exchange per wake in v1 (no follow-up

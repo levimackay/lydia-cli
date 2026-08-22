@@ -4,15 +4,15 @@
 
 **Goal:** Always-listening local voice assistant: "Hey Jarvis" wake word → record → faster-whisper transcription → one safe-tools agent turn → spoken reply via macOS `say`.
 
-**Architecture:** New `src/lydia/voice/` package (tts, audio, wake, stt, assistant), same layering rule as `automations/` — may import `agent/`, `llm/`, `config/`, NEVER `cli/`. CLI adds `lydia listen` (+ launchd agent `com.lydia.listen`) in `cli/main.py`/`cli/scheduler.py`. Every hardware/model dependency is behind an injectable seam so unit tests never touch the mic, audio devices, model downloads, or Ollama.
+**Architecture:** New `src/lydia/voice/` package (tts, audio, wake, stt, assistant), same layering rule as `automations/`: may import `agent/`, `llm/`, `config/`, NEVER `cli/`. CLI adds `lydia listen` (+ launchd agent `com.lydia.listen`) in `cli/main.py`/`cli/scheduler.py`. Every hardware/model dependency is behind an injectable seam so unit tests never touch the mic, audio devices, model downloads, or Ollama.
 
-**Tech Stack:** Python, sounddevice (mic), openwakeword (wake), faster-whisper (STT), macOS `say` (TTS), launchd. Spec: `docs/superpowers/specs/2026-07-17-voice-mode-design.md` — read it first.
+**Tech Stack:** Python, sounddevice (mic), openwakeword (wake), faster-whisper (STT), macOS `say` (TTS), launchd. Spec: `docs/superpowers/specs/2026-07-17-voice-mode-design.md`. Read it first.
 
 ## Global Constraints
 
 - Layering: `voice/` must never import `lydia.cli`. Real-device glue (mic stream) lives in `voice/audio.py` but is constructor-injected everywhere it's used.
-- Unit tests NEVER touch microphone/audio devices, download models, or hit Ollama — fakes only. `.venv/bin/pytest` from repo root; all 320 existing tests stay green.
-- Voice agent turns offer ONLY `VOICE_TOOLS = {"check_email", "check_canvas", "check_stocks", "check_news", "notify"}` — never file/shell tools. `confirm=lambda _r: False`.
+- Unit tests NEVER touch microphone/audio devices, download models, or hit Ollama; fakes only. `.venv/bin/pytest` from repo root; all 320 existing tests stay green.
+- Voice agent turns offer ONLY `VOICE_TOOLS = {"check_email", "check_canvas", "check_stocks", "check_news", "notify"}`, never file/shell tools. `confirm=lambda _r: False`.
 - Pass `keep_alive=config.keep_alive` on every model call (via `run_agent_turn`).
 - New deps go in `pyproject.toml` `dependencies`: `sounddevice>=0.4`, `openwakeword>=0.6`, `faster-whisper>=1.0`.
 - **Never add a `Co-Authored-By: Claude` (or any Claude/Anthropic) trailer to commits.** Plain imperative commit subjects.
@@ -20,7 +20,7 @@
 
 ---
 
-### Task 1: TTS — `voice/tts.py`
+### Task 1: TTS in `voice/tts.py`
 
 **Files:**
 - Create: `src/lydia/voice/__init__.py` (docstring only: `"""Voice assistant: wake word, speech-to-text, spoken replies."""`)
@@ -68,7 +68,7 @@ def test_speak_without_voice_and_empty_text():
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `.venv/bin/pytest tests/test_voice_tts.py -q` — Expected: FAIL (ModuleNotFoundError)
+Run: `.venv/bin/pytest tests/test_voice_tts.py -q`. Expected: FAIL (ModuleNotFoundError)
 
 - [ ] **Step 3: Implement**
 
@@ -110,12 +110,12 @@ def speak(text: str, voice: str | None = None, runner=subprocess.run) -> None:
     runner(argv, check=False)
 ```
 
-- [ ] **Step 4: Run to green** — `.venv/bin/pytest tests/test_voice_tts.py -q` then full suite once.
-- [ ] **Step 5: Commit** — `Add voice TTS module wrapping macOS say`
+- [ ] **Step 4: Run to green**: `.venv/bin/pytest tests/test_voice_tts.py -q`, then the full suite once.
+- [ ] **Step 5: Commit**: `Add voice TTS module wrapping macOS say`
 
 ---
 
-### Task 2: Audio capture + config keys — `voice/audio.py`
+### Task 2: Audio capture + config keys in `voice/audio.py`
 
 **Files:**
 - Create: `src/lydia/voice/audio.py`
@@ -165,7 +165,7 @@ def test_config_voice_defaults():
     assert cfg.voice_tts_voice is None
 ```
 
-- [ ] **Step 2: Run to verify failure** — `.venv/bin/pytest tests/test_voice_audio.py -q` — FAIL.
+- [ ] **Step 2: Run to verify failure.** `.venv/bin/pytest tests/test_voice_audio.py -q` fails.
 
 - [ ] **Step 3: Implement**
 
@@ -233,12 +233,12 @@ def mic_frames():
 
 Add `"sounddevice>=0.4",` to `pyproject.toml` dependencies, then `.venv/bin/pip install -e ".[dev]"`.
 
-- [ ] **Step 4: Run to green** — focused file, then full suite.
-- [ ] **Step 5: Commit** — `Add voice audio capture and voice config keys`
+- [ ] **Step 4: Run to green** on the focused file, then the full suite.
+- [ ] **Step 5: Commit**: `Add voice audio capture and voice config keys`
 
 ---
 
-### Task 3: Wake word — `voice/wake.py`
+### Task 3: Wake word in `voice/wake.py`
 
 **Files:**
 - Create: `src/lydia/voice/wake.py`
@@ -288,7 +288,7 @@ def test_ignores_other_models_scores():
     assert det.process(FRAME) is False and det.process(FRAME) is False
 ```
 
-- [ ] **Step 2: Run to verify failure** — FAIL (module missing).
+- [ ] **Step 2: Run to verify failure.** FAIL (module missing).
 
 - [ ] **Step 3: Implement**
 
@@ -333,12 +333,12 @@ class WakeDetector:
 
 Add `"openwakeword>=0.6",` to pyproject, `pip install -e ".[dev]"`.
 
-- [ ] **Step 4: Run to green** — focused, then full suite.
-- [ ] **Step 5: Commit** — `Add wake word detector wrapping openWakeWord`
+- [ ] **Step 4: Run to green** on the focused tests, then the full suite.
+- [ ] **Step 5: Commit**: `Add wake word detector wrapping openWakeWord`
 
 ---
 
-### Task 4: STT — `voice/stt.py`
+### Task 4: STT in `voice/stt.py`
 
 **Files:**
 - Create: `src/lydia/voice/stt.py`
@@ -386,7 +386,7 @@ def test_empty_audio_returns_empty_string():
     assert t.transcribe(np.zeros(0, dtype=np.int16)) == ""
 ```
 
-- [ ] **Step 2: Run to verify failure** — FAIL.
+- [ ] **Step 2: Run to verify failure.** FAIL.
 
 - [ ] **Step 3: Implement**
 
@@ -421,12 +421,12 @@ class Transcriber:
 
 Add `"faster-whisper>=1.0",` to pyproject, `pip install -e ".[dev]"`.
 
-- [ ] **Step 4: Run to green** — focused, then full suite.
-- [ ] **Step 5: Commit** — `Add speech-to-text transcriber wrapping faster-whisper`
+- [ ] **Step 4: Run to green** on the focused tests, then the full suite.
+- [ ] **Step 5: Commit**: `Add speech-to-text transcriber wrapping faster-whisper`
 
 ---
 
-### Task 5: Assistant loop — `voice/assistant.py`
+### Task 5: Assistant loop in `voice/assistant.py`
 
 **Files:**
 - Create: `src/lydia/voice/assistant.py`
@@ -524,7 +524,7 @@ def test_voice_registry_is_safe_tools_only():
     assert "write_file" not in names and "run_command" not in names
 ```
 
-- [ ] **Step 2: Run to verify failure** — FAIL.
+- [ ] **Step 2: Run to verify failure.** FAIL.
 
 - [ ] **Step 3: Implement**
 
@@ -614,10 +614,10 @@ def run_loop(config: LydiaConfig, client: ModelClient, model: str, *,
             speak_fn(reply)
 ```
 
-Note for the implementer: `run_agent_turn` uses the default silent `stream_fn`, and `ToolContext` in `agent/tools.py` — check its actual constructor fields (`root`, `config`, `confirm`, `client`) before writing; match them exactly.
+Note for the implementer: `run_agent_turn` uses the default silent `stream_fn`, and `ToolContext` lives in `agent/tools.py`. Check its actual constructor fields (`root`, `config`, `confirm`, `client`) before writing, and match them exactly.
 
-- [ ] **Step 4: Run to green** — focused, then full suite.
-- [ ] **Step 5: Commit** — `Add voice assistant wake-listen-think-speak loop`
+- [ ] **Step 4: Run to green** on the focused tests, then the full suite.
+- [ ] **Step 5: Commit**: `Add voice assistant wake-listen-think-speak loop`
 
 ---
 
@@ -635,7 +635,7 @@ Note for the implementer: `run_agent_turn` uses the default silent `stream_fn`, 
 
 - [ ] **Step 1: Write the failing tests**
 
-Extend `tests/test_scheduler.py` (mirror the automations tests exactly — monkeypatch `LISTEN_PLIST_PATH` to tmp_path, fake runner):
+Extend `tests/test_scheduler.py` (mirror the automations tests exactly: monkeypatch `LISTEN_PLIST_PATH` to tmp_path, fake runner):
 
 ```python
 def test_enable_listen_writes_runatload_plist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -663,7 +663,7 @@ def test_disable_listen_unloads_and_removes(tmp_path: Path, monkeypatch: pytest.
     assert not plist.exists() and calls[0][:2] == ["launchctl", "unload"]
 ```
 
-New `tests/test_cli_voice.py` (CliRunner; the loop itself is faked — the CLI test only proves wiring):
+New `tests/test_cli_voice.py` (CliRunner; the loop itself is faked, so the CLI test only proves wiring):
 
 ```python
 """tests/test_cli_voice.py"""
@@ -688,7 +688,7 @@ def test_listen_enable_calls_scheduler(monkeypatch):
     assert result.exit_code == 0 and called
 ```
 
-- [ ] **Step 2: Run to verify failure** — FAIL.
+- [ ] **Step 2: Run to verify failure.** FAIL.
 
 - [ ] **Step 3: Implement scheduler additions**
 
@@ -812,17 +812,17 @@ def listen_status() -> None:
     ui.print_info(f"Voice assistant: {state}.")
 ```
 
-(Match `main.py`'s actual import/helper conventions — `load_config`, `build_client`, `ui` are already imported there; verify before writing.)
+(Match `main.py`'s actual import/helper conventions: `load_config`, `build_client`, and `ui` are already imported there; verify before writing.)
 
-- [ ] **Step 5: Run to green** — new/extended tests, then full suite.
+- [ ] **Step 5: Run to green** on the new and extended tests, then the full suite.
 - [ ] **Step 6: Docs.** README: new "Voice mode" section (setup: `pip install -e .` pulls deps; first `lydia listen` downloads the Whisper model ~150MB and triggers the macOS mic-permission prompt; wake word is "Hey Jarvis"; `lydia listen enable` for always-on; note battery cost and `disable`). ROADMAP: mark voice shipped, note stretch goals (custom "Hey Lydia" model, Piper voice, follow-up window). CLAUDE.md: add `voice/` to the architecture layering diagram (depends on: agent, llm, config) with one paragraph, same style as `automations/`.
-- [ ] **Step 7: Commit** — `Wire voice mode into the CLI with launchd and docs`
+- [ ] **Step 7: Commit**: `Wire voice mode into the CLI with launchd and docs`
 
 ---
 
-## Manual end-to-end verification (Levi's machine — after all tasks)
+## Manual end-to-end verification (Levi's machine, after all tasks)
 
-- [ ] `.venv/bin/pip install -e ".[dev]"` — deps resolve on Apple Silicon.
+- [ ] `.venv/bin/pip install -e ".[dev]"`: deps resolve on Apple Silicon.
 - [ ] `lydia listen` in a terminal → grant mic permission → first run downloads models.
 - [ ] Say "Hey Jarvis" → chime → "what's in the AI news today?" → spoken reply.
 - [ ] Ask "check my email" → it calls the tool and speaks a short summary.

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Lydia is a local AI coding agent CLI — a personal, API-key-free alternative to
+Lydia is a local AI coding agent CLI, a personal, API-key-free alternative to
 Claude Code / Cursor, built on top of a local [Ollama](https://ollama.com)
 daemon, with an optional FastAPI server (`server/`) so Ollama can run on a
 more powerful remote machine instead. It is a portfolio project for Levi
@@ -28,7 +28,7 @@ shared venv for local dev.
 .venv/bin/pytest tests/test_agent_loop.py                                   # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer # one test
 
-# Run the server package's test suite (61 tests) — has its own pyproject.toml,
+# Run the server package's test suite (61 tests). It has its own pyproject.toml,
 # so run it from server/, not the repo root
 cd server && ../.venv/bin/pytest
 
@@ -48,7 +48,7 @@ There is no separate lint/format command configured yet.
 ### Testing against the real Ollama daemon
 
 Unit tests never touch the network (`httpx.MockTransport` for the LLM client,
-tmp_path repos for git/filesystem tools) — `pytest` should never require
+tmp_path repos for git/filesystem tools), so `pytest` should never require
 Ollama to be running. To manually exercise the real thing:
 
 ```bash
@@ -57,7 +57,7 @@ lydia config set think off  # qwen3 is a thinking model; off = much faster manua
 ```
 
 When testing the agent loop end-to-end (tool calls + confirmation prompts),
-piping input via `printf ... | lydia` is unreliable — Rich's `Confirm.ask`
+piping input via `printf ... | lydia` is unreliable: Rich's `Confirm.ask`
 and `prompt_toolkit` fight over a non-tty stdin and the confirm dialog will
 spuriously EOFError (it fails *safe*, i.e. auto-declines, so this looks like
 a bug but isn't one). If you need to script an end-to-end test of a
@@ -70,7 +70,7 @@ To manually verify the client/server split end-to-end (not just
 `server/tests/`'s fake-provider unit tests): run a real server locally
 against the real local Ollama, point a `lydia` project config at it, and
 confirm both that it works *and* that the server's own log only shows
-`/v1/chat`/`/v1/models` traffic — never any file access — which is the
+`/v1/chat`/`/v1/models` traffic, never any file access, which is the
 actual proof that tool execution stayed client-side:
 
 ```bash
@@ -82,7 +82,7 @@ lydia ask "read some_file.py and summarize it" --yes
 
 ## Architecture
 
-Layering, outer to inner — each layer only depends on the ones below it:
+Layering, outer to inner, with each layer only depending on the ones below it:
 
 ```
 cli/      Typer commands + Rich rendering + prompt_toolkit REPL   (depends on: agent, llm, config, context, automations, voice)
@@ -95,17 +95,17 @@ automations/ scheduled recipes: model execution, storage, heartbeat (depends on:
 database/ SQLite storage for the semantic index                  (depends on: nothing else in lydia)
 config/   layered JSON settings                                   (depends on: nothing else in lydia)
 
-server/   (separate package, lydia_server/) — FastAPI inference proxy.
+server/   (separate package, lydia_server/): FastAPI inference proxy.
           Depends on lydia as a library (reuses OllamaClient directly as
-          its provider). Never touches tools/, agent/, or cli/ — tool
+          its provider). Never touches tools/, agent/, or cli/; tool
           execution always stays client-side. See server/README.md.
 ```
 
 `llm/` is two concrete clients behind one structural interface
 (`llm/protocol.py::ModelClient`): `OllamaClient` talks to a local Ollama
 daemon directly, `RemoteClient` talks to a `server/` instance over HTTPS.
-Everything above `llm/` — `agent/loop.py`, `agent/tools.py`,
-`context/indexer.py`/`retriever.py` — type-hints against `ModelClient`,
+Everything above `llm/` (`agent/loop.py`, `agent/tools.py`,
+`context/indexer.py`/`retriever.py`) type-hints against `ModelClient`,
 never a concrete class, and is handed whichever one `llm/factory.py::build_client`
 constructs based on `config.server_url`. This is *the* seam that makes
 local-only and client/server usage the same codepath everywhere except one
@@ -114,12 +114,12 @@ factory function.
 `automations/` stores JSON recipes (model-parsed from plain English), runs the
 model in a stripped-down mode to execute them on a schedule, and persists
 runtime state. It imports `agent/`, `connectors/`, `llm/`, and `config/`, but
-never `cli/` — this keeps it usable from the server (future) and keeps CLI
+never `cli/`. This keeps it usable from the server (future) and keeps CLI
 concerns separate from automation concerns. `store.py` holds the single
 `AUTOMATIONS_DIR` constant (`~/.lydia/automations/`), which tests patch for
 hermetic storage without filesystem side effects.
 
-`voice/` is the always-listening voice assistant — `run_loop` orchestrates the
+`voice/` is the always-listening voice assistant. `run_loop` orchestrates the
 lifecycle (wake detection, transcription, model inference, speech synthesis) and
 is invoked from `cli/main.py::listen_run`. It uses `faster_whisper` for
 speech-to-text and `piper` for synthesis, both running locally. Tests never
@@ -135,7 +135,7 @@ knows nothing about confirmation prompts, risk levels, or the LLM.
 `agent/tools.py` is where UI-independent policy lives: it wraps each
 `tools/*` function in a `ToolSpec` with a JSON schema (sent to the model)
 and a risk tier (`safe` / `confirm` / `command`). Confirmation itself is a
-callback (`ToolContext.confirm`) injected from outside — `agent/` never
+callback (`ToolContext.confirm`) injected from outside; `agent/` never
 imports `rich` or `cli`. The Rich-based confirm dialog lives in
 `cli/ui.py::confirm` and is wired in by `cli/chat.py`.
 
@@ -154,16 +154,16 @@ console. This is what makes it testable with a fake client
   Both fields are parsed in `llm/client.py::parse_chat_line` and rendered
   in `cli/ui.py` (dimmed, collapsing preview).
 - Tool calls arrive as one complete (non-streamed) `message.tool_calls` list
-  in a single chunk, even when `stream: true` — they are never token-by-token
+  in a single chunk, even when `stream: true`; they are never token-by-token
   streamed. See `llm/types.py::ToolCall` and the parsing in
   `llm/client.py::parse_chat_line`.
 - Ollama unloads a model from memory 5 minutes after its last request by
-  default, and reloading costs several seconds — noticeable as a stall on
+  default, and reloading costs several seconds, noticeable as a stall on
   the first message of a new session. `config.keep_alive` (default `30m`)
   is passed on every `chat_stream` call specifically to avoid this; don't
   drop it when adding a new call site.
 - Not every model that looks like it supports tool calling actually wires
-  it into Ollama's structured `message.tool_calls` field — some (e.g.
+  it into Ollama's structured `message.tool_calls` field. Some (e.g.
   `qwen2.5-coder:7b`) write the call as plain JSON text inside
   `message.content` instead, which `run_agent_turn` never parses, so the
   model silently never uses any tool. Before recommending a model as a
@@ -178,10 +178,10 @@ console. This is what makes it testable with a fake client
 - `num_ctx` (default 16384, was 8192) fills up fast: this repo's own
   system prompt + ~25 tool schemas alone costs ~3500 tokens before any
   message is sent. Ollama silently drops the oldest messages once the
-  window is exceeded — no error, no signal, the model just loses earlier
+  window is exceeded: no error, no signal, the model just loses earlier
   turns/tool results. If you change the tool count or system prompt
   significantly, re-measure with `chat_stream(...).stats["prompt_eval_count"]`
-  (Ollama's real token count) rather than assuming it still fits — see
+  (Ollama's real token count) rather than assuming it still fits. See
   ROADMAP.md's context-window entry for how this was measured last time.
 
 ### The client/server wire format
@@ -192,15 +192,15 @@ to Ollama) and `RemoteClient` (talks to `server/`, which itself talks to
 Ollama and passes the shape through): `build_chat_payload` (request body),
 `parse_chat_line` (client-side: NDJSON line → `ChatChunk`), and
 `serialize_chat_chunk` (server-side: `ChatChunk` → NDJSON line, the exact
-inverse — `tests/test_client.py::test_serialize_chat_chunk_round_trips_through_parse_chat_line`
+inverse; `tests/test_client.py::test_serialize_chat_chunk_round_trips_through_parse_chat_line`
 pins this). If you change one, check whether the other needs to change too.
 
 `server/lydia_server/api/v1.py::get_provider` deliberately does *not* use a
 FastAPI yield-dependency for the provider, even though that's the more
 idiomatic pattern for setup/teardown. For the streaming `/v1/chat` route, a
 yield-dependency's teardown runs as soon as the endpoint function returns
-the `StreamingResponse` object — which is *before* the body has actually
-streamed — so it would close the provider's connection mid-stream. The
+the `StreamingResponse` object, which is *before* the body has actually
+streamed, so it would close the provider's connection mid-stream. The
 provider is closed explicitly inside the generator's `finally` instead.
 
 ### Path safety
@@ -214,7 +214,7 @@ project root (`..`, absolute paths elsewhere). Don't bypass this by calling
 
 `config/settings.py::load_config` merges `~/.lydia/config.json` (global) then
 `<project>/.lydia/config.json` (project, found by walking up for a `.lydia/`
-or `.git/` directory) — project wins. Unknown keys are ignored with a
+or `.git/` directory). Project wins. Unknown keys are ignored with a
 warning rather than erroring, so old config files don't break on upgrade.
 
 ## Current state and what's next
@@ -225,15 +225,15 @@ chat), 2 (semantic retrieval), 3 (agent loop + tool calling + git), 6
 (persistent project memory), the client/server split (`server/`, remote
 inference over Tailscale) with connection pooling and real SQLite-backed
 multi-user token storage on top of it, and a first non-Ollama provider
-(Gemini, opt-in, `config.provider = "gemini"` — `llm/gemini_client.py`)
+(Gemini, opt-in, `config.provider = "gemini"`, in `llm/gemini_client.py`)
 are all done. What's left is mostly deferred server work that the
 current design doesn't block but doesn't need yet (OpenAI/Anthropic and
 a server-side non-Ollama provider, a task queue, AMD GPU verification on
 the actual target hardware) plus M7 (plugins, no design started) and
 properly multi-provider semantic search (today it refuses outright on
 any provider but ollama, rather than risk mixing incompatible embedding
-vectors — see the Gemini roadmap entry). Check `ROADMAP.md` before
-picking up new work — it has file-level pointers and the reasoning
+vectors; see the Gemini roadmap entry). Check `ROADMAP.md` before
+picking up new work. It has file-level pointers and the reasoning
 behind past ordering decisions
 (e.g. why M3 shipped before M2).
 
@@ -241,5 +241,5 @@ behind past ordering decisions
 
 - **Never add a `Co-Authored-By: Claude` (or any Claude/Anthropic)
   attribution trailer to commit messages here.** The user wants to be the
-  sole contributor shown on GitHub — this was explicitly requested and
+  sole contributor shown on GitHub. This was explicitly requested and
   enforced once already by rewriting pushed history to strip it.

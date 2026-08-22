@@ -2,22 +2,22 @@
 
 Status snapshot and a concrete plan for what's next. Written so either Levi
 or a future Claude Code session can pick up any item without re-deriving
-context — each one names the files to touch and what "done" looks like.
+context. Each one names the files to touch and what "done" looks like.
 
 ## Done
 
-- **M1 — Core CLI.** Typer commands (`lydia`, `ask`, `analyze`, `models`,
+- **M1: Core CLI.** Typer commands (`lydia`, `ask`, `analyze`, `models`,
   `init`, `config show/set`), a `prompt_toolkit` REPL with history and slash
   commands, Rich streaming Markdown rendering, layered JSON config, model
   auto-selection preferring installed coder models, thinking-model support,
   a gradient ASCII banner.
-- **M3 — Agent loop.** Native Ollama tool calling; tools for
+- **M3: Agent loop.** Native Ollama tool calling; tools for
   read/list/search/write/delete file, `run_command` with a dangerous-command
   classifier and a permission-mode policy, and git status/diff/add/commit/
   push. File writes/deletes/commits/pushes always show a diff or message and
   require y/n approval; writes/deletes keep a timestamped backup. All
   filesystem tools refuse to touch paths outside the project root.
-- **M6 — Persistent project memory.** `agent/facts.py` stores a curated,
+- **M6: Persistent project memory.** `agent/facts.py` stores a curated,
   capped list of facts at `.lydia/memory.json` (separate from the raw
   session transcript in `agent/memory.py`, which is a log, not something fed
   back into future conversations). Facts are folded into the system prompt
@@ -28,14 +28,14 @@ context — each one names the files to touch and what "done" looks like.
   process is present in a fresh process's system prompt with no extra steps.
 - **CI.** `.github/workflows/test.yml` runs the full suite on Python
   3.11-3.13 for every push/PR. Verified against a clean clone with no
-  pre-existing git identity — the git-tool tests set repo-local identity
+  pre-existing git identity. The git-tool tests set repo-local identity
   themselves, so no CI-side git config is needed.
-- **M2 — Retrieval for large repos.** `context/indexer.py` chunks source
+- **M2: Retrieval for large repos.** `context/indexer.py` chunks source
   files into language-agnostic ~60-line windows (snapped to the nearest
   blank line within a short lookahead, so boundaries usually land between
   functions) and embeds each one via Ollama (`nomic-embed-text`, 768-dim).
   `database/sqlite.py` stores chunks + embeddings as float32 blobs in
-  `.lydia/index.sqlite3`. Re-indexing is incremental — a file is only
+  `.lydia/index.sqlite3`. Re-indexing is incremental: a file is only
   re-embedded if its content hash changed since the last index. New safe
   tool `search_semantic` in `agent/tools.py`, offered alongside literal
   `search_code`; it reports "not indexed yet" cleanly if `lydia index`
@@ -45,7 +45,7 @@ context — each one names the files to touch and what "done" looks like.
   isolation) chooses `search_semantic` correctly and gives the right
   answer against a live Ollama daemon, 3/3 runs.
 - **Undo command.** `lydia restore list` / `lydia restore apply <n>`.
-  Fixed a real bug along the way — backups were previously named
+  Fixed a real bug along the way: backups were previously named
   `{stamp}-{filename}` with no directory info, so two files with the same
   name in different directories (e.g. `src/utils.py` and `tests/utils.py`)
   would silently collide. Backups now live at
@@ -55,7 +55,7 @@ context — each one names the files to touch and what "done" looks like.
   full tool access via `ui.auto_confirm`, which approves everything except
   tools/commands flagged dangerous (no human present to approve real
   danger, so it fails safe rather than approving blindly). Plain `lydia
-  ask` without `--yes` is unchanged — still tool-free chat.
+  ask` without `--yes` is unchanged, still tool-free chat.
 - **Automations engine (M5, 2026-07-17).** Plain-English task scheduling: `lydia
   automate "every morning at 8, check my email and canvas"` parses a natural-
   language description into a JSON recipe with triggers (time-of-day or events
@@ -64,7 +64,7 @@ context — each one names the files to touch and what "done" looks like.
   A launchd heartbeat (`lydia automations schedule enable`) runs every 5 minutes
   (configurable) to check if any automations are due; missed ticks on sleep are
   caught up on wake. Notifications go to macOS via `ntfy` (requires one-time
-  auth setup) or a webhook. The model runs in a stripped-down mode — deterministic,
+  auth setup) or a webhook. The model runs in a stripped-down mode: deterministic,
   fast, only the tasks you defined. **Local model setup note:** if `server_url`
   is unset (local Mac Ollama), verify tool-calling support empirically per
   `CLAUDE.md` before trusting a newly pulled model; not every model that looks
@@ -76,14 +76,14 @@ context — each one names the files to touch and what "done" looks like.
 - **More CLI-level tests.** `tests/test_cli_commands.py` covers `analyze`,
   `init`, `config show/set`, `restore list/apply`, and `--version` via
   `CliRunner`. `ask`/`models`/the chat REPL are deliberately not covered
-  this way since they need a live Ollama daemon — see "Testing against the
+  this way since they need a live Ollama daemon; see "Testing against the
   real Ollama daemon" in `CLAUDE.md` for how those get verified instead.
 - **Cross-platform audit.** Checked (not run): grepped the source for
   hardcoded macOS paths, unix-only path joins, and `os.name`/`sys.platform`
-  branches — none found beyond `cli/scheduler.py`; everything else routes
+  branches. None found beyond `cli/scheduler.py`; everything else routes
   through `pathlib`. The one real, unavoidable limitation:
   `tools/terminal.py::run_command` uses `subprocess.run(..., shell=True)`,
-  which invokes `cmd.exe` on Windows, not bash — so unix-style commands a
+  which invokes `cmd.exe` on Windows, not bash, so unix-style commands a
   model generates (`ls`, `grep`, `rm -rf`) won't translate as-is. This has
   never actually been run on Windows or Linux; "checked via static
   analysis" is not the same claim as "tested," and the distinction matters
@@ -94,33 +94,33 @@ context — each one names the files to touch and what "done" looks like.
   service + timer, enabled via `systemctl --user`), selected automatically
   by `platform.system()`; Windows still raises a clear `ScheduleError`
   instead of a traceback, since neither backend applies there.
-  `--notify`'s desktop notification is still macOS-only (`osascript`) —
+  `--notify`'s desktop notification is still macOS-only (`osascript`);
   a `notify-send` equivalent for Linux is a natural follow-up.
 - **Client/server split.** New `server/` package (FastAPI) so Ollama can
   run on a separate, more powerful machine (e.g. a gaming PC with a real
   GPU) while `lydia` keeps running from a laptop with no change in feel.
   Resolved design fork: tool execution (file edits, git, shell) stays
-  **client-side** always — the server is purely an inference proxy
+  **client-side** always. The server is purely an inference proxy
   (`/v1/health`, `/v1/models`, `/v1/chat`, `/v1/embed`), never touches a
   filesystem. This means no WebSockets are needed (confirmation prompts
   never have to interrupt the server mid-stream) and a chat turn keeps the
   same shape Ollama's own `/api/chat` already has.
-  - `llm/protocol.py::ModelClient` — the structural interface both
+  - `llm/protocol.py::ModelClient` is the structural interface both
     `OllamaClient` (local) and `RemoteClient` (server/lydia_server, over
     HTTPS + bearer auth) satisfy; everything downstream (`agent/loop.py`,
     `agent/tools.py`, `context/indexer.py`/`retriever.py`) type-hints
     against this, not a concrete class.
   - `llm/factory.py::build_client(config)` picks which one to construct
-    based on whether `config.server_url` is set — local-only usage is
+    based on whether `config.server_url` is set; local-only usage is
     completely unaffected (zero config changes needed).
   - `llm/client.py` gained three module-level helpers so the wire format
     exists in exactly one place: `build_chat_payload`, `parse_chat_line`
     (client-side parsing), `serialize_chat_chunk` (server-side, the
-    inverse) — `server/lydia_server/api/v1.py` reuses `OllamaClient`
+    inverse). `server/lydia_server/api/v1.py` reuses `OllamaClient`
     directly as its provider rather than reimplementing Ollama-calling
     logic.
   - Auth: bearer token, `{token: user_id}` mapping sourced from env vars
-    (`LYDIA_SERVER_TOKEN` / `LYDIA_SERVER_TOKENS`) — swappable for a real
+    (`LYDIA_SERVER_TOKEN` / `LYDIA_SERVER_TOKENS`), swappable for a real
     multi-user store later without changing the auth dependency's
     interface. HTTPS via `tailscale cert` (see `server/README.md`) rather
     than a self-signed cert, since there's no public domain to get a
@@ -128,24 +128,25 @@ context — each one names the files to touch and what "done" looks like.
   - Verified end-to-end against the real Ollama daemon: started the real
     server locally, pointed a real `lydia` session at it, ran a full
     chat + tool-call turn (`read_file`) through the whole stack, confirmed
-    via server logs that only `/v1/chat` traffic occurred — no file access
-    — proving tool execution genuinely stayed client-side. Also confirmed
-    local-only mode (`server_url` unset) is completely unaffected.
+    via server logs that only `/v1/chat` traffic occurred, with no file
+    access, proving tool execution genuinely stayed client-side. Also
+    confirmed local-only mode (`server_url` unset) is completely
+    unaffected.
   - 154 tests total (140 in the CLI package, 14 in `server/`, run
-    separately since they're two installable packages) — server tests run
+    separately since they're two installable packages). Server tests run
     against a fake `ModelClient` double, no real Ollama needed.
   - Full design reasoning, API shapes, and the folder structure live in
     `server/README.md` and the plan this was built from.
 - **Connection pooling for the server's Ollama provider (2026-08-22).**
-  `api/v1.py::get_provider` used to construct a fresh `OllamaClient` — a
-  fresh `httpx.Client`, a fresh TCP connection — per request, then close
+  `api/v1.py::get_provider` used to construct a fresh `OllamaClient` (a
+  fresh `httpx.Client`, a fresh TCP connection) per request, then close
   it in a `finally` block once that request finished. Now
   `services/ollama_provider.py::get_shared_provider` returns one
   process-wide `OllamaClient` per `ollama_host`, and routes no longer
   close what they're handed; the pooled client is closed exactly once, in
   `main.py`'s new `lifespan` context manager, on actual server shutdown.
   `get_provider` (the FastAPI dependency) stays a plain function, not a
-  yield-dependency, for the same reason it always was — see the
+  yield-dependency, for the same reason it always was; see the
   docstring. Verified against a real Ollama daemon: started the real
   server, made two consecutive `/v1/models` requests (both succeeded,
   proving the shared client survives being reused, not just usable once)
@@ -154,24 +155,24 @@ context — each one names the files to touch and what "done" looks like.
   host → different instance, `close_shared_providers` actually closes the
   underlying connection and clears the cache so the next call builds
   fresh) and `test_main.py` (the app's `lifespan` actually calls
-  `close_shared_providers` on shutdown, not just in theory) — plus the
+  `close_shared_providers` on shutdown, not just in theory), plus the
   existing `/v1/models`, `/v1/embed`, `/v1/chat` tests in `test_v1.py`
   updated from asserting the old close-after-every-request behavior to
   asserting the new share-across-requests one.
 - **Real multi-user token storage (2026-08-22).** `config/settings.py`'s
   `{token: user_id}` dict, built once from env vars at startup, is now a
-  SQLite-backed `TokenStore` (`database/tokens.py`) — tokens can be
+  SQLite-backed `TokenStore` (`database/tokens.py`), so tokens can be
   added, expired, and revoked while the server keeps running, with no
   restart. `LYDIA_SERVER_TOKEN`/`LYDIA_SERVER_TOKENS` are still the
   bootstrap mechanism (re-seeded into the store on every startup, so a
   fresh single-user setup needs zero extra steps), stored at
   `~/.lydia/server/tokens.sqlite3` by default (override with
   `LYDIA_SERVER_TOKENS_DB`). Tokens are hashed (SHA-256) before being
-  written to disk — the env-var approach this replaces never touched
+  written to disk. The env-var approach this replaces never touched
   disk at all, so this is what keeps the new file from being a plaintext
   credential dump. `auth/bearer.py`'s `settings.tokens.get(token)` call
   site and `main.py`'s `if not settings.tokens:` startup guard both
-  needed zero changes — `TokenStore` implements `.get()` and `__len__()`
+  needed zero changes: `TokenStore` implements `.get()` and `__len__()`
   to match, exactly the seam the original design left for this.
   New `lydia-server-token add/revoke/revoke-user/list` CLI (`cli.py`) for
   managing tokens without touching SQLite directly; `add` prints the raw
@@ -180,20 +181,20 @@ context — each one names the files to touch and what "done" looks like.
   a token via the CLI while the server was already running and used it
   immediately with no restart, then revoked a different token that was
   actively working and confirmed the very next request with it got a
-  401 — proving both directions (grant and revoke) take effect live.
+  401, proving both directions (grant and revoke) take effect live.
 
   **Hardened same-day after an automated security review of the initial
   version caught three real issues, all fixed:** (1) `revoke <token>`
-  originally took the raw token as a CLI argument — visible to other
+  originally took the raw token as a CLI argument, visible to other
   local users via `ps`/`/proc/*/cmdline` for as long as the process ran.
   It now reads the token from stdin (piped) or an unechoed `getpass`
   prompt (interactive), never argv; added `revoke-user <user_id>`
   alongside it, since an admin revoking someone *else's* access almost
   never has their raw token to pass in the first place (it was only ever
-  shown once, to them, at `add` time) — this was a real usability gap in
+  shown once, to them, at `add` time). This was a real usability gap in
   the original design, not just a rename. (2) The SQLite file and its
   parent directory were created with default-umask permissions (commonly
-  0o644 / 0o755 — group/world-readable); `TokenStore.__init__` now sets a
+  0o644 / 0o755, group/world-readable); `TokenStore.__init__` now sets a
   restrictive umask for the duration of file/directory creation and
   explicitly `chmod`s both to 0o600/0o700, including tightening a
   pre-existing file left over from before this fix. (3) The move from an
@@ -203,8 +204,8 @@ context — each one names the files to touch and what "done" looks like.
   (the dict was rebuilt from scratch every startup); now that token
   persists and keeps working, silently. Fixed by tracking each token's
   `source` ('env' vs 'cli') and having `_load_tokens()` log a warning for
-  any active env-sourced token no longer named in the current env vars —
-  deliberately a warning, not an auto-revoke, since an env var
+  any active env-sourced token no longer named in the current env vars.
+  It is deliberately a warning, not an auto-revoke, since an env var
   disappearing for an unrelated reason shouldn't kill someone's access on
   its own. 39 new tests total (24 from the original implementation + 15
   covering the three fixes): `test_token_store.py` (add/get/expire/
@@ -216,23 +217,23 @@ context — each one names the files to touch and what "done" looks like.
   never otherwise), `test_cli.py` (every subcommand, including that
   `revoke` rejects a positional token argument outright and that
   revoked/listed output never contains a raw token).
-- **Packaging for PyPI (2026-08-22).** `lydia` was already taken on PyPI —
+- **Packaging for PyPI (2026-08-22).** `lydia` was already taken on PyPI, so
   the PyPI distribution name is now `lydia-cli` (matches the GitHub repo
   name; `pyproject.toml`'s `[project.scripts]` still installs the `lydia`
-  command, and `import lydia` in code is unaffected — only the install
+  command, and `import lydia` in code is unaffected; only the install
   name changed). `.github/workflows/publish.yml` builds and publishes on
-  a GitHub Release via PyPI's Trusted Publisher (OIDC) — no stored API
+  a GitHub Release via PyPI's Trusted Publisher (OIDC), with no stored API
   token; `docs/PUBLISHING.md` has the setup and release-cutting process.
-  **v0.1.0 shipped the same day** — `pip install lydia-cli` /
+  **v0.1.0 shipped the same day.** `pip install lydia-cli` /
   `pipx install lydia-cli` are live and verified against the real
   package on PyPI (not just a local build): a completely fresh venv,
   network install, `lydia --version` and `--help` both work, 85MB with
   no extras.
 
   Split heavy, rarely-needed dependencies out of the base install into
-  `[assistant]` (google-api-python-client/msal/yfinance/feedparser —
+  `[assistant]` (google-api-python-client/msal/yfinance/feedparser, for
   Gmail/Outlook/stocks/news) and `[voice]` (sounddevice/openwakeword/
-  faster-whisper) extras. These were previously always installed —
+  faster-whisper) extras. These were previously always installed,
   collectively several hundred MB (googleapiclient alone is ~100MB, plus
   scipy/onnxruntime/pandas/sklearn as transitive deps) for features most
   people trying the coding agent for the first time never touch.
@@ -241,21 +242,21 @@ context — each one names the files to touch and what "done" looks like.
   both work with zero optional deps present; adding `[assistant]` brings
   it to 331MB and unlocks Gmail/Outlook login for real. Safe to split
   because every import of an assistant/voice package was already
-  function-scoped (never at module load time) — confirmed by grep before
+  function-scoped (never at module load time), confirmed by grep before
   touching anything, not assumed.
 
-  New `cli/optional_deps.py::require_extra` — a context manager that
+  New `cli/optional_deps.py::require_extra` is a context manager that
   turns a bare `ModuleNotFoundError` into "install with: pip install
   \"lydia-cli[extra]\"" instead of a raw traceback, wired into
   `auth login/logout gmail|outlook` (hard-fails, since those can't
   proceed without the dependency) and `listen` (voice mode). `auth
   status` gets softer handling since it reports on all four providers at
-  once — canvas/ntfy need neither extra, so it now degrades to "gmail/
+  once; canvas/ntfy need neither extra, so it now degrades to "gmail/
   outlook status unavailable" instead of the whole command failing.
   Caught and fixed a real bug while wiring this up: an unescaped f-string
   containing `[assistant]` passed to `rich.console.print` gets silently
   stripped by Rich's markup parser (a `[tag]` it doesn't recognize is
-  still parsed and dropped, not printed literally) — both `require_extra`
+  still parsed and dropped, not printed literally). Both `require_extra`
   and `auth_status`'s hint now use `rich.markup.escape()`, caught by a
   test asserting on the actual rendered output, not just "doesn't raise."
   5 new tests: `test_optional_deps.py` (the context manager's three
@@ -264,27 +265,27 @@ context — each one names the files to touch and what "done" looks like.
   `test_cli_auth.py` simulating the assistant extra genuinely being
   absent end-to-end through `auth status`.
 - **Gemini as a non-Ollama provider (2026-08-22).** First real use of the
-  `ModelClient` seam beyond Ollama/RemoteClient — `llm/gemini_client.py`,
+  `ModelClient` seam beyond Ollama/RemoteClient: `llm/gemini_client.py`,
   selected via `config.provider = "gemini"` (default stays `"ollama"`;
   never auto-selected, same "no API keys required unless you opt in"
   rule as everywhere else). `lydia config set gemini_api_key` (prompts,
   hidden input, never a CLI argument) stores the key in the OS keychain
-  via a new `KEYCHAIN_CONFIG_KEYS` mechanism in `cli/main.py::config_set`
-  — the same keychain `config/secrets.py` already used for Gmail/Outlook/
-  Canvas, not plain `config.json` (that's deliberately reserved for
+  via a new `KEYCHAIN_CONFIG_KEYS` mechanism in `cli/main.py::config_set`.
+  That is the same keychain `config/secrets.py` already used for Gmail/
+  Outlook/Canvas, not plain `config.json` (that's deliberately reserved for
   self-issued things like `server_url`'s `api_key`, per the module
-  docstring's own stated distinction — a third-party billed key is a
+  docstring's own stated distinction: a third-party billed key is a
   different trust category).
 
   Wire format was verified empirically against the real API before
-  writing any code, not assumed from docs — same discipline this
+  writing any code, not assumed from docs, the same discipline this
   project already uses for Ollama's tool-calling gotchas: functionCall/
   functionResponse shapes, that lowercase JSON Schema type names work
   as-is, that `alt=sse` streaming returns one complete JSON object per
   `data:` line (no partial-JSON accumulation needed), and that omitting
   the 2.5-series `thoughtSignature` opaque field on a function-response
   round-trip doesn't break anything (reasoning-continuity nicety, not
-  required for correctness — noted as a possible future enhancement).
+  required for correctness; noted as a possible future enhancement).
   Chat, streaming, tool-calling (including the round-trip), and
   embeddings all re-verified end-to-end against the live API after
   implementation, not just the mocked test suite.
@@ -292,14 +293,14 @@ context — each one names the files to touch and what "done" looks like.
   Real gap found and closed rather than shipped broken: semantic search
   (`lydia index` / the `search_semantic` tool) hardcodes an
   Ollama-specific embed model name (`context/indexer.py::EMBED_MODEL`)
-  with no per-index record of which model/dimensionality built it —
+  with no per-index record of which model/dimensionality built it, so
   switching providers on an existing index wouldn't fail cleanly, it'd
   risk silently comparing incompatible vectors. Both call sites now
   refuse outright with a clear message when `provider != "ollama"`
   instead of attempting it; `search_code` (literal) is unaffected.
   Properly wiring multi-provider semantic search (per-index model/
   dimension tracking, re-embed-on-provider-switch) is real remaining
-  work, not done here — scoped out deliberately rather than rushed.
+  work, not done here. It was scoped out deliberately rather than rushed.
 
   29 new tests (410 total, up from 381): `test_gemini_client.py` (message/
   tool-schema conversion, SSE parsing including multi-chunk accumulation,
@@ -313,20 +314,20 @@ context — each one names the files to touch and what "done" looks like.
 - **Fixed the default context window being far too small (2026-08-22).**
   Reported directly: the model losing track of earlier conversation and
   acting like it hadn't actually seen a file it just read. Root-caused
-  with real numbers, not guessed — measured against this actual repo's
+  with real numbers, not guessed: measured against this actual repo's
   own system prompt/tool schemas and real source files:
   - `num_ctx` was 8192. The system prompt plus this project's ~25 tool
     schemas alone cost ~3500 tokens (43% of that budget) before a single
     message was sent; reading two ordinary source files pushed past 8192
-    outright. Now 16384 — empirically the point where a real multi-file
+    outright. Now 16384, empirically the point where a real multi-file
     read + conversation fits comfortably without the severe slowdown a
     much bigger window caused on this hardware (a 3-file/~20k-token
     prompt at 32768 took over 3 minutes to process; 16384 handled a
-    realistic single-file scenario in ~28s). Bigger isn't free — it's a
+    realistic single-file scenario in ~28s). Bigger isn't free: it's a
     real latency tradeoff, not just "more is always better."
   - Separately, and worse: `read_file`'s output was silently cut at
     `MAX_TOOL_OUTPUT_CHARS` (6000 chars) with a bare "N more characters"
-    message — even though `read_file` already supported `start_line`/
+    message. Even though `read_file` already supported `start_line`/
     `end_line` pagination, nothing ever told the model that. A 35KB,
     875-line real file in this repo (`cli/main.py`) got cut off around
     line 150 with no path forward. New `_truncate_read_file` (replacing
@@ -334,16 +335,16 @@ context — each one names the files to touch and what "done" looks like.
     and names the exact next `start_line` to continue from; the tool's
     own schema description now mentions this proactively too, and
     suggests `search_code`/`search_semantic` first for files where only
-    one part matters. `MAX_TOOL_OUTPUT_CHARS` also bumped to 8000 — a
+    one part matters. `MAX_TOOL_OUTPUT_CHARS` also bumped to 8000, a
     modest increase, since pagination is the real fix now, not a bigger
     cap.
   - 3 new tests in `test_agent_tools.py`: truncation produces an
     actionable message with the right `start_line` and never cuts
-    mid-line, a file that fits gets no truncation note at all, and —
-    the one that actually matters — following the hint's own advice
+    mid-line, a file that fits gets no truncation note at all, and,
+    the one that actually matters, following the hint's own advice
     (`read_file` again with the suggested `start_line`) genuinely
     resumes from the right line rather than restarting.
-- **Voice mode (2026-07-18).** Always-listening voice assistant — say "Hey Jarvis"
+- **Voice mode (2026-07-18).** Always-listening voice assistant: say "Hey Jarvis"
   to trigger the model, ask a question, and hear a spoken reply. `lydia listen`
   runs the loop in the foreground; `lydia listen enable/disable/status` manage
   a launchd background agent. Uses `faster_whisper` for speech-to-text (locally,
@@ -355,12 +356,12 @@ context — each one names the files to touch and what "done" looks like.
 
 **Model gotcha found while shipping M2:** not every model that emits
 reasonable-looking tool-call JSON actually wires it into Ollama's
-structured `tool_calls` field — `qwen2.5-coder:7b` writes the call as
+structured `tool_calls` field. `qwen2.5-coder:7b` writes the call as
 plain text in `message.content` instead, which `run_agent_turn` never
 parses, so it silently never uses *any* tool. Confirmed via a direct
 `/api/chat` call with a trivial tool before trusting it as a default.
 Verify tool-calling support empirically (a simple curl test, not vibes)
-before recommending a new default model — see `CLAUDE.md` for the check.
+before recommending a new default model; see `CLAUDE.md` for the check.
 
 M3 was done before M2 on purpose: it was the part that turns Lydia into an
 *agent* rather than a chatbot, and every repo tested against so far fits
@@ -369,26 +370,26 @@ bottleneck as of M3. M2 removes that ceiling for larger repos.
 
 ## Next up
 
-### M7 — Plugins (stretch)
+### M7: Plugins (stretch)
 
 Lowest priority; only worth doing once the server is proven out in daily
 use. Original ideas from project scoping: VS Code extension, browser
 automation, web search, doc lookup, CI/CD integration. No design work has
-started — if you pick this up, start by defining what a "plugin" actually
+started. If you pick this up, start by defining what a "plugin" actually
 extends (a new tool? a new slash command? both?) before writing code.
 
 ### Deferred server work
 
-Not started, not blocked by the current design — see `server/README.md`
+Not started, not blocked by the current design. See `server/README.md`
 and `ROADMAP.md`'s history for the client/server split entry above:
 
-- **Non-Ollama providers for the *server* specifically** — letting a
+- **Non-Ollama providers for the *server* specifically**: letting a
   Lydia Server proxy to a hosted model instead of local Ollama (so a
   remote `lydia` client gets a hosted model through the same `/v1/*`
   API). `services/ollama_provider.py` is the only file that currently
   decides which provider gets constructed server-side. Narrower than it
   used to be: the CLI-*direct* case (no server involved at all) is done
-  — see "Gemini as a non-Ollama provider" below — this item is now
+  (see "Gemini as a non-Ollama provider" below); this item is now
   specifically about wiring the same idea into `server/`, plus OpenAI/
   Anthropic either way. Same rule applies: opt-in, bring your own key,
   never the default.
@@ -396,7 +397,7 @@ and `ROADMAP.md`'s history for the client/server split entry above:
   beyond the current SQLite approach, web dashboard.** All from the
   original project scoping; none designed yet.
 - **AMD GPU acceleration is unverified** on the actual target hardware
-  (RX 9060 XT) — Ollama's AMD support runs through ROCm, better on Linux
+  (RX 9060 XT). Ollama's AMD support runs through ROCm, better on Linux
   than Windows. `ollama ps` should show GPU usage during a request; if it
   silently falls back to CPU, the server won't actually be faster than
   local inference on a decent laptop.

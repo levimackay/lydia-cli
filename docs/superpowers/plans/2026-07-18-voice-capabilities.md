@@ -4,7 +4,7 @@
 
 **Goal:** Give Lydia weather, macOS calendar, open-app/file, and find/read-file abilities (chat + voice), and make voice fast (small model, thinking off).
 
-**Architecture:** Two new connectors (`weather.py` — Open-Meteo free API with IP-geolocation fallback; `calendar_mac.py` — AppleScript read of macOS Calendar), one new `open_app` tool wrapping `open`, all registered as safe-risk ToolSpecs in `agent/tools.py` following the existing `_check_*` pattern. `voice/assistant.py` widens `VOICE_TOOLS` and forces `think=False`; new config keys `weather_location` and `voice_model`.
+**Architecture:** Two new connectors (`weather.py`, the free Open-Meteo API with IP-geolocation fallback; `calendar_mac.py`, an AppleScript read of macOS Calendar), one new `open_app` tool wrapping `open`, all registered as safe-risk ToolSpecs in `agent/tools.py` following the existing `_check_*` pattern. `voice/assistant.py` widens `VOICE_TOOLS` and forces `think=False`; new config keys `weather_location` and `voice_model`.
 
 **Design decisions (approved by Levi 2026-07-18):** all four capabilities; voice actions execute without confirmation; voice uses `qwen3.5:4b` (verified empirically: emits structured `tool_calls`).
 
@@ -14,7 +14,7 @@
 - `voice/` never imports `lydia.cli`. New tools are risk `"safe"`.
 - No new dependencies.
 - **Never add a `Co-Authored-By: Claude` (or any Claude/Anthropic) trailer to commits.** Plain imperative subjects.
-- New config keys (Task 1 adds both): `weather_location: str | None = None`, `voice_model: str | None = None` — appended after `voice_tts_voice` in `LydiaConfig`.
+- New config keys (Task 1 adds both): `weather_location: str | None = None`, `voice_model: str | None = None`, both appended after `voice_tts_voice` in `LydiaConfig`.
 
 ---
 
@@ -82,7 +82,7 @@ def test_unknown_location_raises():
         get_weather("Nowhereville", transport=transport)
 ```
 
-Extend `tests/test_agent_tools.py` (mirror the existing notify-tool tests' style — `ctx(tmp_path)` helper, monkeypatch the connector module function):
+Extend `tests/test_agent_tools.py` (mirror the existing notify-tool tests' style: `ctx(tmp_path)` helper, monkeypatch the connector module function):
 
 ```python
 def test_check_weather_uses_config_location(tmp_path, monkeypatch):
@@ -97,11 +97,11 @@ def test_check_weather_uses_config_location(tmp_path, monkeypatch):
     assert seen["loc"] == "Mountain Home"
 ```
 
-- [ ] **Step 2: Run to verify failure** — `.venv/bin/pytest tests/test_connectors_weather.py -q` → FAIL.
+- [ ] **Step 2: Run to verify failure.** `.venv/bin/pytest tests/test_connectors_weather.py -q` → FAIL.
 
 - [ ] **Step 3: Implement**
 
-`settings.py` — append after `voice_tts_voice`:
+In `settings.py`, append after `voice_tts_voice`:
 
 ```python
     # e.g. "Mountain Home, Idaho". None = auto-detect from IP (works while traveling).
@@ -188,7 +188,7 @@ def get_weather(location: str | None = None, transport=None) -> str:
     return "\n".join(lines)
 ```
 
-`agent/tools.py` — handler (lazy import, matching `_check_news`) + ToolSpec registered right after `notify`:
+In `agent/tools.py`, the handler (lazy import, matching `_check_news`) + ToolSpec registered right after `notify`:
 
 ```python
 def _check_weather(args: dict, ctx: ToolContext) -> ToolResult:
@@ -213,8 +213,8 @@ def _check_weather(args: dict, ctx: ToolContext) -> ToolResult:
         ),
 ```
 
-- [ ] **Step 4: Run to green** — focused files, then full suite.
-- [ ] **Step 5: Commit** — `Add weather connector with IP-located Open-Meteo forecasts`
+- [ ] **Step 4: Run to green** on the focused files, then the full suite.
+- [ ] **Step 5: Commit**: `Add weather connector with IP-located Open-Meteo forecasts`
 
 ---
 
@@ -363,10 +363,10 @@ def _check_calendar(args: dict, ctx: ToolContext) -> ToolResult:
         ),
 ```
 
-Note: `runner(...)` in `get_events` passes `timeout=30` — the fake runners in tests accept `**kwargs`, so this is test-compatible.
+Note: `runner(...)` in `get_events` passes `timeout=30`, and the fake runners in tests accept `**kwargs`, so this is test-compatible.
 
 - [ ] **Step 4: Run to green**, full suite.
-- [ ] **Step 5: Commit** — `Add macOS Calendar connector`
+- [ ] **Step 5: Commit**: `Add macOS Calendar connector`
 
 ---
 
@@ -379,7 +379,7 @@ Note: `runner(...)` in `get_events` passes `timeout=30` — the fake runners in 
 - Test: extend `tests/test_agent_tools.py`, `tests/test_voice_assistant.py`
 
 **Interfaces:**
-- Produces: ToolSpec `"open_app"` (safe): args `target` (required string — app name or file/folder path). Voice loop consumes `config.voice_model`.
+- Produces: ToolSpec `"open_app"` (safe): args `target` (required string: app name or file/folder path). Voice loop consumes `config.voice_model`.
 
 - [ ] **Step 1: Failing tests**
 
@@ -416,7 +416,7 @@ def test_open_app_failure_reports(tmp_path, monkeypatch):
     assert not result.ok and "NotARealApp" in result.content
 ```
 
-(`tools.py` already imports `subprocess` at module level — verify; if not, add the import.)
+(`tools.py` already imports `subprocess` at module level; verify that, and add the import if it doesn't.)
 
 `tests/test_voice_assistant.py`:
 
@@ -503,14 +503,14 @@ VOICE_SYSTEM_PROMPT = (
 )
 ```
 
-`cli/main.py` `listen_run` — replace `model = resolve_model(client, config)` with:
+In `cli/main.py`, `listen_run` replaces `model = resolve_model(client, config)` with:
 
 ```python
         model = config.voice_model or resolve_model(client, config)
 ```
 
 - [ ] **Step 4: Run to green**, full suite.
-- [ ] **Step 5: Commit** — `Add weather, calendar, and open-app abilities to voice`
+- [ ] **Step 5: Commit**: `Add weather, calendar, and open-app abilities to voice`
 
 ---
 

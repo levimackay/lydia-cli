@@ -10,7 +10,7 @@ labels: enhancement
 **Have you checked [`ROADMAP.md`](../../ROADMAP.md)?**
 
 <!-- If it's already listed (e.g. under "Next up" or "Deferred server
-work"), link to that section instead of re-describing it — the roadmap
+work"), link to that section instead of re-describing it. The roadmap
 often already has file-level pointers and the reasoning behind priority,
 which saves you re-explaining the idea from scratch. If it's genuinely
 new, describe it below. -->

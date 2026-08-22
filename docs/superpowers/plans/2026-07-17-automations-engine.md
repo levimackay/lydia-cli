@@ -4,26 +4,26 @@
 
 **Goal:** Plain-English-created automations (schedules, intervals, event triggers) that run on a launchd heartbeat, execute Lydia's existing connectors + one model turn, and push results to Levi's phone via ntfy.sh.
 
-**Architecture:** New `src/lydia/automations/` package (model → store → parser → runner), sitting at the same layer as `agent/` (may import `agent/`, `connectors/`, `llm/`, `config/` — NEVER `cli/`). CLI wiring in `cli/main.py` + a shared creation flow in `cli/automate_flow.py`. One new launchd heartbeat plist (`com.lydia.automations`, `StartInterval`) added to `cli/scheduler.py`. Phone push via new `connectors/ntfy.py`.
+**Architecture:** New `src/lydia/automations/` package (model → store → parser → runner), sitting at the same layer as `agent/` (may import `agent/`, `connectors/`, `llm/`, `config/`, but NEVER `cli/`). CLI wiring in `cli/main.py` + a shared creation flow in `cli/automate_flow.py`. One new launchd heartbeat plist (`com.lydia.automations`, `StartInterval`) added to `cli/scheduler.py`. Phone push via new `connectors/ntfy.py`.
 
 **Tech Stack:** Python 3.11+, Typer, httpx, keyring, pytest. **No new dependencies.**
 
-**Spec:** `docs/superpowers/specs/2026-07-17-automations-design.md` — read it first.
+**Spec:** `docs/superpowers/specs/2026-07-17-automations-design.md`. Read it first.
 
 ## Global Constraints
 
 - Layering (CLAUDE.md): `automations/` must never import `cli/`. `runner.py` uses `confirm=lambda _r: False` (only safe-risk tools run, confirm is never reached).
-- Unit tests NEVER hit the network or a live Ollama — fakes/`httpx.MockTransport` only. Run with `.venv/bin/pytest` from repo root (270 existing tests must stay green).
+- Unit tests NEVER hit the network or a live Ollama; fakes and `httpx.MockTransport` only. Run with `.venv/bin/pytest` from repo root (270 existing tests must stay green).
 - Pass `keep_alive=config.keep_alive` on every `chat_stream` call (CLAUDE.md gotcha).
 - Secrets go through `config/secrets.py` (keychain), never plain JSON.
 - **Never add a `Co-Authored-By: Claude` (or any Claude/Anthropic) trailer to commits.**
 - Commit messages: plain imperative, e.g. `Add automation recipe model` (match `git log` style).
-- Don't touch `~/.lydia/config.json` or Levi's real `~/.lydia/automations/` during testing — tests use `tmp_path` + monkeypatch.
+- Don't touch `~/.lydia/config.json` or Levi's real `~/.lydia/automations/` during testing; tests use `tmp_path` + monkeypatch.
 - All state lives under `~/.lydia/automations/` via `store.py`'s single patchable `AUTOMATIONS_DIR` constant; every other path inside store is derived from it via functions so tests patch exactly one attribute.
 
 ---
 
-### Task 1: Recipe model — `automations/model.py`
+### Task 1: Recipe model in `automations/model.py`
 
 **Files:**
 - Create: `src/lydia/automations/__init__.py`
@@ -116,7 +116,7 @@ def test_describe_mentions_trigger_and_notify():
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_automations_model.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'lydia.automations'`
+Expected: FAIL (`ModuleNotFoundError: No module named 'lydia.automations'`)
 
 - [ ] **Step 3: Implement**
 
@@ -304,7 +304,7 @@ git commit -m "Add automation recipe model with validation"
 
 ---
 
-### Task 2: Persistence — `automations/store.py`
+### Task 2: Persistence in `automations/store.py`
 
 **Files:**
 - Create: `src/lydia/automations/store.py`
@@ -394,7 +394,7 @@ def test_lock_blocks_then_goes_stale():
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_automations_store.py -v`
-Expected: FAIL — `cannot import name 'store'`
+Expected: FAIL (`cannot import name 'store'`)
 
 - [ ] **Step 3: Implement**
 
@@ -590,7 +590,7 @@ def test_send_push_raises_connector_error_on_http_failure():
         send_push("t", "x", "y", transport=transport)
 ```
 
-For the tool, add to the existing agent-tools test file (match its fixture style — it builds a `ToolContext` with a fake config; check `tests/test_agent_tools.py` first and imitate):
+For the tool, add to the existing agent-tools test file (match its fixture style: it builds a `ToolContext` with a fake config; check `tests/test_agent_tools.py` first and imitate):
 
 ```python
 def test_notify_tool_without_topic_reports_not_configured(monkeypatch, tool_ctx):
@@ -622,7 +622,7 @@ def test_notify_tool_sends_push(monkeypatch, tool_ctx):
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_ntfy.py -v`
-Expected: FAIL — `No module named 'lydia.connectors.ntfy'`
+Expected: FAIL (`No module named 'lydia.connectors.ntfy'`)
 
 - [ ] **Step 3: Implement**
 
@@ -665,13 +665,13 @@ def send_push(
         raise ConnectorError(f"ntfy push failed: {exc}") from exc
 ```
 
-`src/lydia/config/secrets.py` — add below `CANVAS_TOKEN`:
+In `src/lydia/config/secrets.py`, add below `CANVAS_TOKEN`:
 
 ```python
 NTFY_TOPIC = "ntfy_topic"
 ```
 
-`src/lydia/agent/tools.py` — add handler after `_check_news` (lazy imports, same pattern as the other connector handlers):
+In `src/lydia/agent/tools.py`, add the handler after `_check_news` (lazy imports, same pattern as the other connector handlers):
 
 ```python
 def _send_notification(args: dict, ctx: ToolContext) -> ToolResult:
@@ -711,7 +711,7 @@ ToolSpec(
 ),
 ```
 
-Note: `_send_notification` calls the *module* (`ntfy.send_push`) rather than importing the function, and the test monkeypatches `lydia.connectors.ntfy.send_push` — this only works if the handler resolves the attribute at call time, which `from lydia.connectors import ntfy` + `ntfy.send_push(...)` does. Keep it that way.
+Note: `_send_notification` calls the *module* (`ntfy.send_push`) rather than importing the function, and the test monkeypatches `lydia.connectors.ntfy.send_push`, and this only works if the handler resolves the attribute at call time, which `from lydia.connectors import ntfy` + `ntfy.send_push(...)` does. Keep it that way.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -733,12 +733,12 @@ git commit -m "Add ntfy push connector and notify agent tool"
 - Modify: `src/lydia/connectors/email_gmail.py`
 - Modify: `src/lydia/connectors/email_outlook.py`
 - Modify: `src/lydia/connectors/canvas.py`
-- Test: extend the existing connector tests (`tests/test_connectors*.py` — find them with `ls tests/ | grep -i -e connector -e gmail -e canvas` and follow their existing fake/MockTransport style)
+- Test: extend the existing connector tests (`tests/test_connectors*.py`; find them with `ls tests/ | grep -i -e connector -e gmail -e canvas` and follow their existing fake/MockTransport style)
 
 **Interfaces:**
-- Produces: `email_gmail.EmailSummary.id: str = ""`, `email_outlook.EmailSummary.id: str = ""`, `canvas.Assignment.id: str = ""` — all **appended last with a default** so existing positional constructions keep working. Fetch functions populate them.
+- Produces: `email_gmail.EmailSummary.id: str = ""`, `email_outlook.EmailSummary.id: str = ""`, `canvas.Assignment.id: str = ""`, all **appended last with a default** so existing positional constructions keep working. Fetch functions populate them.
 
-- [ ] **Step 1: Write the failing tests** — in each connector's existing test file, extend the existing happy-path test (or add one) to assert IDs are populated. The exact assertion to add in each:
+- [ ] **Step 1: Write the failing tests.** In each connector's existing test file, extend the existing happy-path test (or add one) to assert IDs are populated. The exact assertion to add in each:
 
 ```python
 # gmail: the fake service already returns messages with "id" — assert it lands
@@ -752,9 +752,9 @@ assert assignments[0].id == "42"
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/pytest tests/ -k "gmail or outlook or canvas" -v`
-Expected: FAIL — `EmailSummary has no attribute 'id'` (and similar)
+Expected: FAIL (`EmailSummary has no attribute 'id'`, and similar)
 
-- [ ] **Step 3: Implement** — three small edits:
+- [ ] **Step 3: Implement** the three small edits:
 
 `email_gmail.py`: add `id: str = ""` as the LAST field of `EmailSummary`; in `get_recent_emails`, add `id=ref["id"],` to the `EmailSummary(...)` construction.
 
@@ -762,7 +762,7 @@ Expected: FAIL — `EmailSummary has no attribute 'id'` (and similar)
 
 `canvas.py`: add `id: str = ""` as the LAST field of `Assignment`; in the assignment-building loop add `id=str(item.get("id", "")),` (Canvas IDs are ints on the wire; stored as str so all seen-IDs are uniformly strings).
 
-- [ ] **Step 4: Run the full suite** (these are shared dataclasses — check nothing else broke)
+- [ ] **Step 4: Run the full suite** (these are shared dataclasses, so check nothing else broke)
 
 Run: `.venv/bin/pytest`
 Expected: all PASS
@@ -776,7 +776,7 @@ git commit -m "Carry stable item IDs on email and Canvas summaries"
 
 ---
 
-### Task 5: English → recipe parser — `automations/parser.py`
+### Task 5: English → recipe parser in `automations/parser.py`
 
 **Files:**
 - Create: `src/lydia/automations/parser.py`
@@ -861,7 +861,7 @@ def test_parse_fails_after_retry():
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_automations_parser.py -v`
-Expected: FAIL — no module `parser`
+Expected: FAIL (no module `parser`)
 
 - [ ] **Step 3: Implement**
 
@@ -1002,7 +1002,7 @@ git commit -m "Add English-to-recipe automation parser"
 
 ---
 
-### Task 6: Runner — due-ness, execution, events, tick
+### Task 6: Runner (due-ness, execution, events, tick)
 
 **Files:**
 - Create: `src/lydia/automations/runner.py`
@@ -1011,11 +1011,11 @@ git commit -m "Add English-to-recipe automation parser"
 **Interfaces:**
 - Consumes: Tasks 1/2/5 (`model`, `store`, `parser.complete`); `agent.tools.build_registry`, `ToolContext`; `connectors` (gmail/outlook/canvas fetchers with `.id` from Task 4, `ntfy.send_push`); `config.secrets`.
 - Produces:
-  - `is_due(auto: Automation, state_entry: dict, now: datetime) -> bool` — schedule/interval only.
-  - `execute(auto, config, client, model, extra_sections: list[tuple[str, str]] | None = None, handlers: dict | None = None) -> str` — runs steps, returns final text.
-  - `run_one(auto, config, client, model, now: datetime, state: dict, handlers=None) -> dict` — executes + notifies + updates `state[auto.name]["last_run"]`, returns a run record (shape from Task 2).
-  - `poll_new_items(trigger, config) -> list[tuple[str, str]]` — (id, text) for the source's current items; raises `AutomationError` when not configured.
-  - `tick(config, client, model, now: datetime | None = None, handlers=None) -> list[dict]` — the heartbeat entry: lock, iterate, dedupe, execute, save state, append runs, failure notices. Returns run records.
+  - `is_due(auto: Automation, state_entry: dict, now: datetime) -> bool`: schedule/interval only.
+  - `execute(auto, config, client, model, extra_sections: list[tuple[str, str]] | None = None, handlers: dict | None = None) -> str`: runs steps, returns final text.
+  - `run_one(auto, config, client, model, now: datetime, state: dict, handlers=None) -> dict`: executes + notifies + updates `state[auto.name]["last_run"]`, returns a run record (shape from Task 2).
+  - `poll_new_items(trigger, config) -> list[tuple[str, str]]`: (id, text) for the source's current items; raises `AutomationError` when not configured.
+  - `tick(config, client, model, now: datetime | None = None, handlers=None) -> list[dict]` is the heartbeat entry: lock, iterate, dedupe, execute, save state, append runs, failure notices. Returns run records.
   - `FAILURE_NOTICE_INTERVAL_HOURS = 6`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1215,7 +1215,7 @@ def test_event_no_match_updates_seen_without_firing(no_real_push, monkeypatch):
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_automations_runner.py -v`
-Expected: FAIL — no module `runner`
+Expected: FAIL (no module `runner`)
 
 - [ ] **Step 3: Implement**
 
@@ -1479,7 +1479,7 @@ def _tick_event(auto: Automation, config: LydiaConfig, client: ModelClient,
 - [ ] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_automations_runner.py -v`
-Expected: all PASS. Then `.venv/bin/pytest` — full suite green.
+Expected: all PASS. Then `.venv/bin/pytest` for a green full suite.
 
 - [ ] **Step 5: Commit**
 
@@ -1490,7 +1490,7 @@ git commit -m "Add automation runner: due-ness, steps, event dedupe, tick"
 
 ---
 
-### Task 7: Heartbeat plist — `cli/scheduler.py` generalization
+### Task 7: Heartbeat plist via `cli/scheduler.py` generalization
 
 **Files:**
 - Modify: `src/lydia/cli/scheduler.py`
@@ -1500,7 +1500,7 @@ git commit -m "Add automation runner: due-ness, steps, event dedupe, tick"
 - Consumes: existing `Runner`, `ScheduleError`, `_find_lydia_executable`.
 - Produces: `AUTOMATIONS_LABEL = "com.lydia.automations"`; `AUTOMATIONS_PLIST_PATH`; `AUTOMATIONS_LOG_PATH = Path.home() / ".lydia" / "automations" / "tick.log"`; `enable_automations(interval_seconds: int = 300, lydia_path: str | None = None, runner: Runner = subprocess.run) -> Path`; `disable_automations(runner: Runner = subprocess.run) -> None`; `automations_enabled() -> bool`. Existing briefing functions unchanged.
 
-- [ ] **Step 1: Write the failing tests** (in `tests/test_scheduler.py`, using its existing fake-runner + monkeypatched-plist-path pattern — monkeypatch `scheduler.AUTOMATIONS_PLIST_PATH` to `tmp_path / "auto.plist"`):
+- [ ] **Step 1: Write the failing tests** (in `tests/test_scheduler.py`, using its existing fake-runner + monkeypatched-plist-path pattern; monkeypatch `scheduler.AUTOMATIONS_PLIST_PATH` to `tmp_path / "auto.plist"`):
 
 ```python
 def test_enable_automations_writes_interval_plist(tmp_path, monkeypatch):
@@ -1540,7 +1540,7 @@ def test_disable_automations_unloads_and_removes(tmp_path, monkeypatch):
 Run: `.venv/bin/pytest tests/test_scheduler.py -v`
 Expected: new tests FAIL (`no attribute 'enable_automations'`), old ones PASS.
 
-- [ ] **Step 3: Implement** — append to `cli/scheduler.py`:
+- [ ] **Step 3: Implement**, appending to `cli/scheduler.py`:
 
 ```python
 AUTOMATIONS_LABEL = "com.lydia.automations"
@@ -1617,7 +1617,7 @@ git commit -m "Add launchd heartbeat for the automations tick"
 
 ---
 
-### Task 8: CLI wiring — `automate`, `automations` app, `/automate`, `auth login ntfy`
+### Task 8: CLI wiring for `automate`, the `automations` app, `/automate`, and `auth login ntfy`
 
 **Files:**
 - Create: `src/lydia/cli/automate_flow.py`
@@ -1631,7 +1631,7 @@ git commit -m "Add launchd heartbeat for the automations tick"
 
 - [ ] **Step 1: Write the failing tests**
 
-`tests/test_cli_automations.py` (CliRunner style, copied from `tests/test_cli_commands.py` — read that file first and reuse its runner/fixture conventions):
+`tests/test_cli_automations.py` (CliRunner style, copied from `tests/test_cli_commands.py`; read that file first and reuse its runner/fixture conventions):
 
 ```python
 import pytest
@@ -1691,7 +1691,7 @@ def test_show_missing_errors():
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_cli_automations.py -v`
-Expected: FAIL — no `automations` command.
+Expected: FAIL (no `automations` command).
 
 - [ ] **Step 3: Implement**
 
@@ -1734,7 +1734,7 @@ def create_from_english(text: str, client: ModelClient, model: str,
     return True
 ```
 
-`src/lydia/cli/main.py` — add sub-apps (next to the existing `add_typer` block):
+In `src/lydia/cli/main.py`, add sub-apps (next to the existing `add_typer` block):
 
 ```python
 automations_app = typer.Typer(help="Create and manage plain-English automations.")
@@ -1743,7 +1743,7 @@ automations_schedule_app = typer.Typer(help="Manage the automations heartbeat (m
 automations_app.add_typer(automations_schedule_app, name="schedule")
 ```
 
-Commands (place after the briefing commands; `_client_and_model` mirrors the connect/resolve dance `briefing_run` and `ask` already do — factor it exactly like this):
+Commands (place after the briefing commands; `_client_and_model` mirrors the connect/resolve dance `briefing_run` and `ask` already do, so factor it exactly like this):
 
 ```python
 def _client_and_model(config: LydiaConfig):
@@ -1898,7 +1898,7 @@ def automations_schedule_disable() -> None:
     ui.print_info("Heartbeat disabled.")
 ```
 
-`auth login ntfy` — in `auth_login` (main.py:377), add an `ntfy` branch alongside gmail/outlook/canvas (match the existing branch style):
+For `auth login ntfy`, in `auth_login` (main.py:377), add an `ntfy` branch alongside gmail/outlook/canvas (match the existing branch style):
 
 ```python
 if provider == "ntfy":
@@ -1917,9 +1917,9 @@ if provider == "ntfy":
     return
 ```
 
-Also extend `auth_status` (show whether `NTFY_TOPIC` is set — print the topic so Levi can re-subscribe a new phone) and `auth_logout` (`delete_secret(NTFY_TOPIC)`), and update the two commands' help strings that enumerate providers ("gmail | outlook | canvas" → "gmail | outlook | canvas | ntfy").
+Also extend `auth_status` (show whether `NTFY_TOPIC` is set, printing the topic so Levi can re-subscribe a new phone) and `auth_logout` (`delete_secret(NTFY_TOPIC)`), and update the two commands' help strings that enumerate providers ("gmail | outlook | canvas" → "gmail | outlook | canvas | ntfy").
 
-`cli/chat.py` — in `_handle_slash`, add before the final else:
+In `cli/chat.py`, inside `_handle_slash`, add before the final else:
 
 ```python
 elif command == "/automate":
@@ -1930,7 +1930,7 @@ elif command == "/automate":
         create_from_english(arg, session.client, session.model, session.config)
 ```
 
-(match the exact local variable names used by the neighboring branches — the argument variable may be named differently; read the function first) and add a row to the help table at the top of the file: `| /automate <text> | Create an automation in plain English |`.
+(match the exact local variable names used by the neighboring branches; the argument variable may be named differently, so read the function first) and add a row to the help table at the top of the file: `| /automate <text> | Create an automation in plain English |`.
 
 - [ ] **Step 4: Run to verify**
 
@@ -1950,10 +1950,10 @@ git commit -m "Wire automations into the CLI and chat REPL"
 
 **Files:**
 - Modify: `README.md` (features section: automations + ntfy; new commands)
-- Modify: `ROADMAP.md` (move automations into Done with a dated entry; add the summer-brain note: `server_url` unset → local Mac Ollama; verify tool-calling empirically per CLAUDE.md before trusting a newly pulled Mac model; prevent Mac sleep for timely ticks — launchd catch-up still runs missed schedules on wake)
-- Modify: `CLAUDE.md` (one paragraph: the `automations/` package layer — may import agent/connectors/llm/config, never cli; store's single `AUTOMATIONS_DIR` patch point for tests)
+- Modify: `ROADMAP.md` (move automations into Done with a dated entry; add the summer-brain note: `server_url` unset → local Mac Ollama; verify tool-calling empirically per CLAUDE.md before trusting a newly pulled Mac model; prevent Mac sleep for timely ticks, since launchd catch-up still runs missed schedules on wake)
+- Modify: `CLAUDE.md` (one paragraph: the `automations/` package layer may import agent/connectors/llm/config, never cli; store's single `AUTOMATIONS_DIR` patch point for tests)
 
-- [ ] **Step 1: Write the docs** (prose, no code — describe the feature the way README currently describes briefings, including the `lydia automate` example from the spec)
+- [ ] **Step 1: Write the docs** (prose, no code; describe the feature the way README currently describes briefings, including the `lydia automate` example from the spec)
 - [ ] **Step 2: Full suite**
 
 Run: `.venv/bin/pytest` and `cd server && ../.venv/bin/pytest`
@@ -1968,11 +1968,11 @@ git commit -m "Document the automations engine"
 
 ---
 
-## Manual end-to-end verification (Levi's machine, live Ollama — after all tasks)
+## Manual end-to-end verification (Levi's machine, live Ollama, after all tasks)
 
 Not automatable in CI; do these in order and report results honestly:
 
-1. `lydia auth login ntfy` → subscribe on the phone → verify a test push arrives (e.g. in chat: "send a test notification to my phone" — exercises the `notify` tool).
+1. `lydia auth login ntfy` → subscribe on the phone → verify a test push arrives (e.g. in chat: "send a test notification to my phone", which exercises the `notify` tool).
 2. `lydia automate "every morning at 8, check my email and canvas and send me a briefing"` → confirm the echo reads correctly → save.
 3. `lydia automations run morning-briefing` → real push arrives with a real briefing.
 4. `lydia automations schedule enable` → `launchctl list | grep lydia` shows the job → watch `~/.lydia/automations/tick.log` for one real tick ("Nothing due." is a pass).
