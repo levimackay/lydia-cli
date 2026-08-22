@@ -8,7 +8,7 @@ instead of its own.
 **What this server does NOT do**: touch your project's files, run git, or
 run shell commands. Tool execution always happens on whichever machine
 runs the `lydia` CLI — this server is purely an inference proxy. See the
-root [`README.md`](../README.md#running-lydia-server-remote-gpu-inference)
+root [`README.md`](../README.md#beyond-your-own-machine)
 for why, and the migration plan this was built from for the full reasoning
 (`git log` around when `server/` was added, or ask a Claude Code session
 pointed at this repo — `CLAUDE.md` has the summary).
