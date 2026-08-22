@@ -310,6 +310,39 @@ context — each one names the files to touch and what "done" looks like.
   `--project` rejection, `config show` reporting presence not value, the
   `lydia index` provider guard), and one in `test_agent_tools.py` for the
   `search_semantic` provider guard.
+- **Fixed the default context window being far too small (2026-08-22).**
+  Reported directly: the model losing track of earlier conversation and
+  acting like it hadn't actually seen a file it just read. Root-caused
+  with real numbers, not guessed — measured against this actual repo's
+  own system prompt/tool schemas and real source files:
+  - `num_ctx` was 8192. The system prompt plus this project's ~25 tool
+    schemas alone cost ~3500 tokens (43% of that budget) before a single
+    message was sent; reading two ordinary source files pushed past 8192
+    outright. Now 16384 — empirically the point where a real multi-file
+    read + conversation fits comfortably without the severe slowdown a
+    much bigger window caused on this hardware (a 3-file/~20k-token
+    prompt at 32768 took over 3 minutes to process; 16384 handled a
+    realistic single-file scenario in ~28s). Bigger isn't free — it's a
+    real latency tradeoff, not just "more is always better."
+  - Separately, and worse: `read_file`'s output was silently cut at
+    `MAX_TOOL_OUTPUT_CHARS` (6000 chars) with a bare "N more characters"
+    message — even though `read_file` already supported `start_line`/
+    `end_line` pagination, nothing ever told the model that. A 35KB,
+    875-line real file in this repo (`cli/main.py`) got cut off around
+    line 150 with no path forward. New `_truncate_read_file` (replacing
+    the generic `_truncate` for this one tool) cuts at a line boundary
+    and names the exact next `start_line` to continue from; the tool's
+    own schema description now mentions this proactively too, and
+    suggests `search_code`/`search_semantic` first for files where only
+    one part matters. `MAX_TOOL_OUTPUT_CHARS` also bumped to 8000 — a
+    modest increase, since pagination is the real fix now, not a bigger
+    cap.
+  - 3 new tests in `test_agent_tools.py`: truncation produces an
+    actionable message with the right `start_line` and never cuts
+    mid-line, a file that fits gets no truncation note at all, and —
+    the one that actually matters — following the hint's own advice
+    (`read_file` again with the suggested `start_line`) genuinely
+    resumes from the right line rather than restarting.
 - **Voice mode (2026-07-18).** Always-listening voice assistant — say "Hey Jarvis"
   to trigger the model, ask a question, and hear a spoken reply. `lydia listen`
   runs the loop in the foreground; `lydia listen enable/disable/status` manage

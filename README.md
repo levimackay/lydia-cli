@@ -554,7 +554,7 @@ useful for a human too.
 ## Development
 
 ```bash
-.venv/bin/pytest                                    # CLI suite (410 tests, no Ollama required)
+.venv/bin/pytest                                    # CLI suite (413 tests, no Ollama required)
 .venv/bin/pytest tests/test_agent_loop.py            # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer  # one test
 

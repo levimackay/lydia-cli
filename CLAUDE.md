@@ -23,7 +23,7 @@ shared venv for local dev.
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/pip install -e "server/[dev]"
 
-# Run the CLI package's test suite (410 tests)
+# Run the CLI package's test suite (413 tests)
 .venv/bin/pytest
 .venv/bin/pytest tests/test_agent_loop.py                                   # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer # one test
@@ -175,6 +175,14 @@ console. This is what makes it testable with a fake client
   "parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}]}'
   ```
   and check the response has a `tool_calls` field on `message`, not JSON text in `content`.
+- `num_ctx` (default 16384, was 8192) fills up fast: this repo's own
+  system prompt + ~25 tool schemas alone costs ~3500 tokens before any
+  message is sent. Ollama silently drops the oldest messages once the
+  window is exceeded — no error, no signal, the model just loses earlier
+  turns/tool results. If you change the tool count or system prompt
+  significantly, re-measure with `chat_stream(...).stats["prompt_eval_count"]`
+  (Ollama's real token count) rather than assuming it still fits — see
+  ROADMAP.md's context-window entry for how this was measured last time.
 
 ### The client/server wire format
 

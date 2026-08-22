@@ -41,7 +41,12 @@ from lydia.tools.terminal import classify_command, run_command
 
 Risk = Literal["safe", "confirm", "command"]
 
-MAX_TOOL_OUTPUT_CHARS = 6000
+# Was 6000 — measured against real files in this repo (main.py, 875 lines/
+# 35KB) that were silently cut off well before the (also too-small) old
+# num_ctx=8192 default was even the binding constraint. Now paired with
+# _truncate_read_file's pagination guidance for read_file specifically, so
+# this doesn't need to be huge — the model can ask for more.
+MAX_TOOL_OUTPUT_CHARS = 8000
 
 
 @dataclass
@@ -112,6 +117,47 @@ def _truncate(text: str, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
     return text[:limit] + f"\n... [truncated, {len(text) - limit} more characters]"
 
 
+def _truncate_read_file(numbered_content: str, path: str, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
+    """Like _truncate, but read_file-specific: cuts at a line boundary
+    (never mid-line) and tells the model exactly how to see the rest —
+    call read_file again with the next start_line — instead of a bare
+    "N more characters" count it has no way to act on. A real, ordinary-
+    sized source file (a few hundred lines) can already exceed
+    MAX_TOOL_OUTPUT_CHARS; without this, the model has no signal that
+    read_file's start_line/end_line pagination exists at all, so it just
+    treats the file as cut off with no path forward.
+
+    filesystem.read_file() numbers every line as "{line_num:>5}\\t{text}",
+    which this relies on to recover the last shown line number."""
+    if len(numbered_content) <= limit:
+        return numbered_content
+
+    kept: list[str] = []
+    total = 0
+    for line in numbered_content.split("\n"):
+        if total + len(line) + 1 > limit:
+            break
+        kept.append(line)
+        total += len(line) + 1
+
+    last_line_num = None
+    for line in reversed(kept):
+        prefix = line.split("\t", 1)[0].strip()
+        if prefix.isdigit():
+            last_line_num = int(prefix)
+            break
+
+    shown = "\n".join(kept)
+    next_start = last_line_num + 1 if last_line_num is not None else "?"
+    return (
+        f"{shown}\n"
+        f"... [truncated after line {last_line_num} — the file continues. "
+        f"Call read_file again with path={path!r}, start_line={next_start} to keep reading, "
+        "or use search_code/search_semantic to jump straight to the relevant part instead "
+        "of reading the whole file.]"
+    )
+
+
 def _declined(what: str) -> ToolResult:
     return ToolResult(
         ok=False,
@@ -136,7 +182,7 @@ def _confirm_or_auto(ctx: ToolContext, request: ConfirmRequest) -> bool:
 
 def _read_file(args: dict, ctx: ToolContext) -> ToolResult:
     content = filesystem.read_file(ctx.root, args["path"], args.get("start_line", 1), args.get("end_line"))
-    return ToolResult(ok=True, content=_truncate(content), summary=f"read {args['path']}")
+    return ToolResult(ok=True, content=_truncate_read_file(content, args["path"]), summary=f"read {args['path']}")
 
 
 def _list_dir(args: dict, ctx: ToolContext) -> ToolResult:
@@ -502,7 +548,11 @@ def filter_for_mode(registry: list[ToolSpec], mode: str) -> list[ToolSpec]:
 def build_registry() -> list[ToolSpec]:
     return [
         ToolSpec(
-            "read_file", "Read a text file from the project, with line numbers.",
+            "read_file",
+            "Read a text file from the project, with line numbers. Large files are truncated "
+            "to a line boundary — the result says exactly which start_line to pass next if so. "
+            "For a big file where you only need one part, prefer search_code/search_semantic to "
+            "find the relevant lines first, then read_file with a start_line/end_line range.",
             {
                 "type": "object",
                 "properties": {

@@ -29,7 +29,17 @@ class LydiaConfig:
 
     model: str | None = None  # None = auto-detect best installed model
     temperature: float = 0.7
-    num_ctx: int = 8192
+    # Was 8192 — measured against this actual repo: the system prompt plus
+    # this project's ~25 tool schemas alone already consumes ~3500 tokens
+    # (43% of the old budget) before a single message is sent, and two
+    # ordinary source-file reads pushed past 8192 outright. 16384 was
+    # measured to comfortably hold a real multi-file read + conversation
+    # without the severe slowdown a much larger window caused on this
+    # hardware (a 3-file/~20k-token prompt at 32768 took >3 minutes to
+    # process) — see ROADMAP.md's context-window entry for the numbers.
+    # Bump further if your hardware handles it; see "Performance and
+    # model choice" in README.md.
+    num_ctx: int = 16384
     ollama_host: str = "http://localhost:11434"
     # Reasoning for thinking-capable models (qwen3, deepseek-r1):
     # auto = model default, on/off = force. "off" gives much faster replies.

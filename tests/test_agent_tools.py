@@ -25,6 +25,61 @@ def test_read_file_is_safe_and_needs_no_confirm(tmp_path: Path) -> None:
     assert "x = 1" in result.content
 
 
+def _big_file_text(num_lines: int = 1000) -> str:
+    """Big enough to exceed MAX_TOOL_OUTPUT_CHARS (8000) for real, rather
+    than monkeypatching the constant — _truncate_read_file's `limit`
+    parameter default is bound to MAX_TOOL_OUTPUT_CHARS at function-
+    definition time (module import), so patching the module attribute
+    afterward wouldn't actually change the already-bound default."""
+    return "\n".join(f"line number {i}" for i in range(1, num_lines))
+
+
+def test_read_file_truncation_tells_the_model_how_to_continue(tmp_path: Path) -> None:
+    """A large-but-ordinary source file used to get silently cut off with a
+    bare "N more characters" message the model had no way to act on, even
+    though read_file already supports start_line/end_line pagination. Now
+    the truncation message names the exact next start_line."""
+    big_file = _big_file_text()
+    (tmp_path / "big.py").write_text(big_file)
+
+    result = get("read_file").handler({"path": "big.py"}, ctx(tmp_path))
+
+    assert result.ok
+    assert len(result.content) < len(big_file)  # actually truncated
+    assert "start_line=" in result.content
+    assert "big.py" in result.content
+    # Never cuts mid-line — every line in the output is either complete or
+    # is the final truncation-notice line appended after it.
+    body = result.content.rsplit("\n... [truncated", 1)[0]
+    for line in body.split("\n"):
+        assert line.split("\t", 1)[0].strip().isdigit(), f"unexpected non-numbered line: {line!r}"
+
+
+def test_read_file_no_truncation_note_when_it_fits(tmp_path: Path) -> None:
+    (tmp_path / "small.py").write_text("x = 1\ny = 2\n")
+    result = get("read_file").handler({"path": "small.py"}, ctx(tmp_path))
+    assert "truncated" not in result.content
+
+
+def test_read_file_pagination_hint_actually_resumes_correctly(tmp_path: Path) -> None:
+    """Follow the truncation message's own advice — read from the
+    suggested start_line — and confirm it picks up where the first call
+    left off, not from the beginning again."""
+    import re
+
+    big_file = _big_file_text()
+    (tmp_path / "big.py").write_text(big_file)
+
+    first = get("read_file").handler({"path": "big.py"}, ctx(tmp_path))
+    match = re.search(r"start_line=(\d+)", first.content)
+    assert match, first.content
+    next_start = int(match.group(1))
+
+    second = get("read_file").handler({"path": "big.py", "start_line": next_start}, ctx(tmp_path))
+    first_line_of_second = second.content.split("\n", 1)[0]
+    assert first_line_of_second.split("\t", 1)[0].strip() == str(next_start)
+
+
 def test_write_file_declined_does_not_touch_disk(tmp_path: Path) -> None:
     result = get("write_file").handler(
         {"path": "new.py", "content": "print(1)\n"}, ctx(tmp_path, confirm_result=False)
