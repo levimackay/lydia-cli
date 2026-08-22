@@ -222,9 +222,12 @@ context — each one names the files to touch and what "done" looks like.
   command, and `import lydia` in code is unaffected — only the install
   name changed). `.github/workflows/publish.yml` builds and publishes on
   a GitHub Release via PyPI's Trusted Publisher (OIDC) — no stored API
-  token; `docs/PUBLISHING.md` has the one-time PyPI-side setup this
-  needs before it can actually publish (needs an account I don't have
-  access to).
+  token; `docs/PUBLISHING.md` has the setup and release-cutting process.
+  **v0.1.0 shipped the same day** — `pip install lydia-cli` /
+  `pipx install lydia-cli` are live and verified against the real
+  package on PyPI (not just a local build): a completely fresh venv,
+  network install, `lydia --version` and `--help` both work, 85MB with
+  no extras.
 
   Split heavy, rarely-needed dependencies out of the base install into
   `[assistant]` (google-api-python-client/msal/yfinance/feedparser —

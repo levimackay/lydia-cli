@@ -1,43 +1,36 @@
 # Publishing to PyPI
 
-`lydia-cli` isn't on PyPI yet — this is what needs to happen, once, before
-`.github/workflows/publish.yml` can actually publish a release. All of
-this needs a PyPI account (pypi.org) with access I don't have, so it's a
-manual step for whoever owns that account.
+`lydia-cli` is live on PyPI: https://pypi.org/project/lydia-cli/ — `pip
+install lydia-cli` / `pipx install lydia-cli` both work. This documents
+how that's wired up and what cutting the next release looks like.
 
-## One-time setup: PyPI Trusted Publisher
+## One-time setup: PyPI Trusted Publisher (done)
 
 The publish workflow uses PyPI's [Trusted Publisher](https://docs.pypi.org/trusted-publishers/)
-(OIDC) mechanism instead of a stored API token — no secret to leak, rotate,
-or accidentally commit. It has to be configured on PyPI's side before the
-workflow can push anything:
+(OIDC) mechanism instead of a stored API token — no secret to leak,
+rotate, or accidentally commit. This is configured on PyPI's side
+already, recorded here for reference (e.g. if it ever needs to be
+recreated, or replicated for `lydia-server` — see below):
 
-1. Create the `lydia-cli` project on PyPI, either by:
-   - Reserving the name ahead of time: [pypi.org/manage/account/publishing/](https://pypi.org/manage/account/publishing/)
-     -> "Add a new pending publisher" (works even before the project exists), or
-   - Publishing once manually first (`twine upload dist/*` with an API
-     token) and adding the trusted publisher afterward from the project's
-     own settings page.
-2. Either way, when adding the trusted publisher, fill in:
-   - **PyPI project name**: `lydia-cli`
-   - **Owner**: `levimackay`
-   - **Repository name**: `lydia-cli`
-   - **Workflow name**: `publish.yml`
-   - **Environment name**: `pypi`
-3. In this repo's GitHub settings (Settings -> Environments), create an
-   environment named `pypi` (matches `environment: pypi` in the workflow).
-   Optionally add a required reviewer here for extra protection against an
-   accidental publish — the workflow already only runs on a published
-   GitHub Release, which is itself a deliberate action, but a required
-   reviewer adds a second confirmation step if wanted.
+- **PyPI project name**: `lydia-cli`
+- **Owner**: `levimackay`
+- **Repository name**: `lydia-cli`
+- **Workflow name**: `publish.yml`
+- **Environment name**: `pypi`
 
-That's it — no `PYPI_API_TOKEN` secret to set anywhere. The workflow
+Manageable at [pypi.org/manage/project/lydia-cli/settings/publishing/](https://pypi.org/manage/project/lydia-cli/settings/publishing/)
+(once the project exists, that's where trusted publishers live — not the
+account-level pending-publisher page used for the very first setup).
+The matching GitHub side is a `pypi` environment under this repo's
+Settings -> Environments, which `.github/workflows/publish.yml` deploys
+to (`environment: pypi`) — that's what the OIDC token exchange is scoped
+against.
+
+No `PYPI_API_TOKEN` secret exists anywhere in this repo. The workflow
 authenticates itself to PyPI per-run using a token PyPI issues based on
 the trusted publisher relationship above.
 
 ## Cutting a release
-
-Once the trusted publisher is configured:
 
 1. Bump `version` in `pyproject.toml` (and `server/pyproject.toml` too, if
    also publishing the server package — see below).
@@ -50,6 +43,10 @@ Once the trusted publisher is configured:
    `pypa/gh-action-pypi-publish`.
 4. `pip install lydia-cli` should work within a few minutes.
 
+**PyPI versions are immutable.** Once a version number is published it
+can never be re-uploaded, even after deleting it — if a release turns
+out broken, ship a new version number, don't try to fix v0.1.0 in place.
+
 ## `lydia-server` is not published yet
 
 Only the `lydia-cli` package (the coding agent) is wired up to publish.
@@ -61,9 +58,10 @@ this was written) and its own trusted publisher entry, but a second
 being bolted onto this one, since the two packages version and release on
 different cadences.
 
-## Before the very first publish
+## Before any release
 
-Worth a final sanity pass beyond what CI already checks:
+Worth a final sanity pass beyond what CI already checks — this is what
+verified v0.1.0 before it shipped:
 
 - `python -m build` locally, then install the built wheel into a
   throwaway venv (`python3 -m venv /tmp/check && /tmp/check/bin/pip

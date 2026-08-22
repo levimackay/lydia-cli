@@ -1,6 +1,7 @@
 # Lydia
 
 [![tests](https://github.com/levimackay/lydia-cli/actions/workflows/test.yml/badge.svg)](https://github.com/levimackay/lydia-cli/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/lydia-cli.svg)](https://pypi.org/project/lydia-cli/)
 
 **A local AI coding agent for your terminal — no API keys, no subscriptions,
 no cloud.** Lydia reads your code, answers questions about it, edits files,
@@ -101,8 +102,6 @@ beats "best available and metered."
 
 ## Install
 
-**From PyPI** (not published yet — see [docs/PUBLISHING.md](docs/PUBLISHING.md) for what's left before this works):
-
 ```bash
 pipx install lydia-cli
 # or: pip install lydia-cli
@@ -126,7 +125,7 @@ Using a feature without its extra installed gives a clear error naming
 which extra to add — it won't silently break or crash the rest of the
 CLI.
 
-**From source** (works today, before the PyPI publish above is live):
+**From source** (for the latest unreleased changes, or to build from a specific commit):
 
 ```bash
 git clone https://github.com/levimackay/lydia-cli.git && cd lydia-cli
