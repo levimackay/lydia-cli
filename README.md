@@ -101,10 +101,44 @@ beats "best available and metered."
 
 ## Install
 
+**From PyPI** (not published yet — see [docs/PUBLISHING.md](docs/PUBLISHING.md) for what's left before this works):
+
+```bash
+pipx install lydia-cli
+# or: pip install lydia-cli
+```
+
+[`pipx`](https://pipx.pypa.io) is the better choice for a standalone CLI
+tool like this one — it installs `lydia` into its own isolated
+environment and puts it on your PATH automatically, no venv or symlink
+management needed. The base install is deliberately lean (a fast,
+small install for the coding agent itself); the personal-assistant
+connectors (Gmail/Outlook/stocks/news) and voice mode pull in much
+heavier dependencies and are opt-in extras:
+
+```bash
+pipx install "lydia-cli[assistant]"        # + Gmail/Outlook/stocks/news
+pipx install "lydia-cli[voice]"            # + always-listening voice mode
+pipx install "lydia-cli[assistant,voice]"  # both
+```
+
+Using a feature without its extra installed gives a clear error naming
+which extra to add — it won't silently break or crash the rest of the
+CLI.
+
+**From source** (works today, before the PyPI publish above is live):
+
 ```bash
 git clone https://github.com/levimackay/lydia-cli.git && cd lydia-cli
+pipx install .                              # or add [assistant]/[voice]/[all], same as above
+```
+
+For local development, where code changes should take effect immediately
+without reinstalling:
+
+```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+.venv/bin/pip install -e ".[dev]"           # dev pulls in every extra, for the full test suite
 ln -s "$PWD/.venv/bin/lydia" /opt/homebrew/bin/lydia   # or anywhere on your PATH
 ```
 
@@ -455,7 +489,7 @@ useful for a human too.
 ## Development
 
 ```bash
-.venv/bin/pytest                                    # CLI suite (376 tests, no Ollama required)
+.venv/bin/pytest                                    # CLI suite (381 tests, no Ollama required)
 .venv/bin/pytest tests/test_agent_loop.py            # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer  # one test
 

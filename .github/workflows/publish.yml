@@ -1,0 +1,33 @@
+name: publish
+
+# Runs when a GitHub Release is published (Releases -> Draft a new release
+# -> tag e.g. v0.2.0 -> Publish release) — not on every push or tag, so a
+# publish to PyPI is always a deliberate, reviewable action.
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # No stored API token: PyPI's Trusted Publisher (OIDC) exchanges
+      # this workflow's GitHub-issued identity token for a short-lived
+      # publish credential at upload time. See docs/PUBLISHING.md for the
+      # one-time setup this requires on pypi.org before this can succeed.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: |
+          pip install build
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

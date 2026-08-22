@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 import typer
+from rich.markup import escape
 from rich.syntax import Syntax
 from rich.table import Table
 
@@ -32,6 +33,7 @@ from lydia import __version__
 from lydia.agent import facts
 from lydia.cli import ui
 from lydia.cli.chat import resolve_model, run_chat
+from lydia.cli.optional_deps import require_extra
 from lydia.config.settings import (
     LydiaConfig,
     coerce_value,
@@ -398,24 +400,26 @@ def auth_login(
 ) -> None:
     """Connect a personal-assistant data source (Gmail, Outlook, Canvas, or ntfy)."""
     if provider == "gmail":
-        from lydia.connectors.auth import gmail_oauth
-        ui.print_info("Opening a browser to sign in to Gmail...")
-        try:
-            gmail_oauth.login()
-        except gmail_oauth.GmailAuthError as exc:
-            ui.print_error(str(exc))
-            raise typer.Exit(1)
-        ui.print_info("Signed in to Gmail.")
+        with require_extra("assistant", "Gmail login"):
+            from lydia.connectors.auth import gmail_oauth
+            ui.print_info("Opening a browser to sign in to Gmail...")
+            try:
+                gmail_oauth.login()
+            except gmail_oauth.GmailAuthError as exc:
+                ui.print_error(str(exc))
+                raise typer.Exit(1)
+            ui.print_info("Signed in to Gmail.")
     elif provider == "outlook":
-        from lydia.connectors.auth import outlook_oauth
-        if not client_id:
-            client_id = typer.prompt("Azure app Application (client) ID")
-        try:
-            outlook_oauth.login(client_id, on_code=lambda msg: ui.console.print(msg))
-        except outlook_oauth.OutlookAuthError as exc:
-            ui.print_error(str(exc))
-            raise typer.Exit(1)
-        ui.print_info("Signed in to Outlook.")
+        with require_extra("assistant", "Outlook login"):
+            from lydia.connectors.auth import outlook_oauth
+            if not client_id:
+                client_id = typer.prompt("Azure app Application (client) ID")
+            try:
+                outlook_oauth.login(client_id, on_code=lambda msg: ui.console.print(msg))
+            except outlook_oauth.OutlookAuthError as exc:
+                ui.print_error(str(exc))
+                raise typer.Exit(1)
+            ui.print_info("Signed in to Outlook.")
     elif provider == "canvas":
         from lydia.config import secrets
         if not base_url:
@@ -448,12 +452,30 @@ def auth_login(
 def auth_status(provider: str | None = typer.Argument(None, help="Specific provider or None for all")) -> None:
     """Show which personal-assistant sources are connected."""
     from lydia.config import secrets
-    from lydia.connectors.auth import gmail_oauth, outlook_oauth
 
     config = load_config()
+    # Unlike auth_login/auth_logout (which only ever touch one provider and
+    # can afford to hard-fail if its extra is missing), status reports on
+    # everything at once — canvas/ntfy need neither google-auth-oauthlib
+    # nor msal, so someone without the 'assistant' extra installed should
+    # still be able to check those rather than the whole command failing.
+    try:
+        from lydia.connectors.auth import gmail_oauth, outlook_oauth
+
+        gmail_connected = gmail_oauth.is_logged_in()
+        outlook_connected = outlook_oauth.is_logged_in()
+    except ModuleNotFoundError:
+        gmail_connected = outlook_connected = False
+        # Rich markup would otherwise silently eat the literal "[assistant]"
+        # below (see cli/optional_deps.py's require_extra for the same
+        # bug) — escape the install command, keep [dim]...[/dim] as real
+        # markup for styling.
+        install_hint = escape('pip install "lydia-cli[assistant]"')
+        ui.console.print(f"[dim]gmail/outlook status unavailable — install with: {install_hint}[/dim]")
+
     rows = [
-        ("gmail", gmail_oauth.is_logged_in()),
-        ("outlook", outlook_oauth.is_logged_in()),
+        ("gmail", gmail_connected),
+        ("outlook", outlook_connected),
         ("canvas", bool(config.canvas_base_url and secrets.get_secret(secrets.CANVAS_TOKEN))),
         ("ntfy", bool(secrets.get_secret(secrets.NTFY_TOPIC))),
     ]
@@ -492,11 +514,13 @@ def auth_status(provider: str | None = typer.Argument(None, help="Specific provi
 def auth_logout(provider: str = typer.Argument(..., help="gmail | outlook | canvas | ntfy")) -> None:
     """Disconnect a personal-assistant data source."""
     if provider == "gmail":
-        from lydia.connectors.auth import gmail_oauth
-        gmail_oauth.logout()
+        with require_extra("assistant", "Gmail logout"):
+            from lydia.connectors.auth import gmail_oauth
+            gmail_oauth.logout()
     elif provider == "outlook":
-        from lydia.connectors.auth import outlook_oauth
-        outlook_oauth.logout()
+        with require_extra("assistant", "Outlook logout"):
+            from lydia.connectors.auth import outlook_oauth
+            outlook_oauth.logout()
     elif provider == "canvas":
         from lydia.config import secrets
         secrets.delete_secret(secrets.CANVAS_TOKEN)
@@ -739,20 +763,21 @@ def listen_run(ctx: typer.Context) -> None:
             ui.print_error(f"Cannot reach {config.server_url or config.ollama_host}.")
             raise typer.Exit(1)
         model = config.voice_model or resolve_model(client, config)
-        mic = audio.Microphone()
-        ui.print_info(f'Listening for "{wake_label(config.voice_wake_word)}" — Ctrl-C to stop.')
-        try:
-            assistant.run_loop(
-                config, client, model,
-                frames=mic.frames(),
-                wake=WakeDetector(config.voice_wake_word),
-                transcriber=Transcriber(config.voice_stt_model),
-                speak_fn=lambda text: tts.speak(text, voice=config.voice_tts_voice),
-                chime_fn=assistant.play_chime,
-                flush_fn=mic.flush,
-            )
-        except KeyboardInterrupt:
-            ui.print_info("Stopped listening.")
+        with require_extra("voice", "Voice mode"):
+            mic = audio.Microphone()
+            ui.print_info(f'Listening for "{wake_label(config.voice_wake_word)}" — Ctrl-C to stop.')
+            try:
+                assistant.run_loop(
+                    config, client, model,
+                    frames=mic.frames(),
+                    wake=WakeDetector(config.voice_wake_word),
+                    transcriber=Transcriber(config.voice_stt_model),
+                    speak_fn=lambda text: tts.speak(text, voice=config.voice_tts_voice),
+                    chime_fn=assistant.play_chime,
+                    flush_fn=mic.flush,
+                )
+            except KeyboardInterrupt:
+                ui.print_info("Stopped listening.")
 
 
 @listen_app.command("enable")

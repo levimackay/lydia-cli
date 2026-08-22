@@ -216,6 +216,50 @@ context — each one names the files to touch and what "done" looks like.
   never otherwise), `test_cli.py` (every subcommand, including that
   `revoke` rejects a positional token argument outright and that
   revoked/listed output never contains a raw token).
+- **Packaging for PyPI (2026-08-22).** `lydia` was already taken on PyPI —
+  the PyPI distribution name is now `lydia-cli` (matches the GitHub repo
+  name; `pyproject.toml`'s `[project.scripts]` still installs the `lydia`
+  command, and `import lydia` in code is unaffected — only the install
+  name changed). `.github/workflows/publish.yml` builds and publishes on
+  a GitHub Release via PyPI's Trusted Publisher (OIDC) — no stored API
+  token; `docs/PUBLISHING.md` has the one-time PyPI-side setup this
+  needs before it can actually publish (needs an account I don't have
+  access to).
+
+  Split heavy, rarely-needed dependencies out of the base install into
+  `[assistant]` (google-api-python-client/msal/yfinance/feedparser —
+  Gmail/Outlook/stocks/news) and `[voice]` (sounddevice/openwakeword/
+  faster-whisper) extras. These were previously always installed —
+  collectively several hundred MB (googleapiclient alone is ~100MB, plus
+  scipy/onnxruntime/pandas/sklearn as transitive deps) for features most
+  people trying the coding agent for the first time never touch.
+  Verified against a real built wheel in a throwaway venv, not just
+  reasoned about: base install is 85MB and `lydia --version`/`--help`
+  both work with zero optional deps present; adding `[assistant]` brings
+  it to 331MB and unlocks Gmail/Outlook login for real. Safe to split
+  because every import of an assistant/voice package was already
+  function-scoped (never at module load time) — confirmed by grep before
+  touching anything, not assumed.
+
+  New `cli/optional_deps.py::require_extra` — a context manager that
+  turns a bare `ModuleNotFoundError` into "install with: pip install
+  \"lydia-cli[extra]\"" instead of a raw traceback, wired into
+  `auth login/logout gmail|outlook` (hard-fails, since those can't
+  proceed without the dependency) and `listen` (voice mode). `auth
+  status` gets softer handling since it reports on all four providers at
+  once — canvas/ntfy need neither extra, so it now degrades to "gmail/
+  outlook status unavailable" instead of the whole command failing.
+  Caught and fixed a real bug while wiring this up: an unescaped f-string
+  containing `[assistant]` passed to `rich.console.print` gets silently
+  stripped by Rich's markup parser (a `[tag]` it doesn't recognize is
+  still parsed and dropped, not printed literally) — both `require_extra`
+  and `auth_status`'s hint now use `rich.markup.escape()`, caught by a
+  test asserting on the actual rendered output, not just "doesn't raise."
+  5 new tests: `test_optional_deps.py` (the context manager's three
+  outcomes: missing module gets rewritten, success passes through
+  untouched, unrelated exceptions aren't swallowed) and one in
+  `test_cli_auth.py` simulating the assistant extra genuinely being
+  absent end-to-end through `auth status`.
 - **Voice mode (2026-07-18).** Always-listening voice assistant — say "Hey Jarvis"
   to trigger the model, ask a question, and hear a spoken reply. `lydia listen`
   runs the loop in the foreground; `lydia listen enable/disable/status` manage
@@ -271,7 +315,5 @@ and `ROADMAP.md`'s history for the client/server split entry above:
 
 ## Smaller polish items (no milestone, pick up anytime)
 
-- **Packaging.** `pyproject.toml` is set up for `pip install -e .`; hasn't
-  been published anywhere (PyPI, or even a simple `brew tap`) so the README
-  install instructions still say "clone this repo." Same applies to
-  `server/pyproject.toml`.
+- **`brew tap` / other package managers.** PyPI is set up (see Done,
+  below); a Homebrew formula or similar hasn't been looked at.

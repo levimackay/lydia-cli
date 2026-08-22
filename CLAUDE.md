@@ -23,7 +23,7 @@ shared venv for local dev.
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/pip install -e "server/[dev]"
 
-# Run the CLI package's test suite (376 tests)
+# Run the CLI package's test suite (381 tests)
 .venv/bin/pytest
 .venv/bin/pytest tests/test_agent_loop.py                                   # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer # one test

@@ -96,3 +96,35 @@ def test_logout_canvas_clears_token() -> None:
 def test_login_unknown_provider_fails() -> None:
     result = runner.invoke(app, ["auth", "login", "twitter"])
     assert result.exit_code == 1
+
+
+def test_status_without_assistant_extra_shows_canvas_ntfy_and_a_hint_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Simulates the 'assistant' extra genuinely not being installed
+    (google-api-python-client/msal absent) — auth_status must degrade
+    gracefully (canvas/ntfy still checkable) rather than crash the whole
+    command, and the install hint must survive Rich markup parsing intact
+    (regression test: "[assistant]" was previously silently stripped by
+    Rich, since an unescaped f-string treats [...] as a markup tag)."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "lydia.connectors.auth":
+            raise ModuleNotFoundError("No module named 'google_auth_oauthlib'", name="google_auth_oauthlib")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    result = runner.invoke(app, ["auth", "status"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "gmail/outlook status unavailable" in result.stdout
+    # Rich wraps long lines in CliRunner's captured terminal width, so
+    # check the brackets survived rather than exact contiguous text —
+    # the bug this pins was Rich's markup parser silently deleting
+    # "[assistant]" outright, not line-wrapping it.
+    assert "lydia-cli[assistant]" in result.stdout.replace("\n", "")
+    assert "not connected" in result.stdout  # canvas/ntfy still rendered
