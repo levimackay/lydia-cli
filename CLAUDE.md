@@ -28,7 +28,7 @@ shared venv for local dev.
 .venv/bin/pytest tests/test_agent_loop.py                                   # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer # one test
 
-# Run the server package's test suite (46 tests) — has its own pyproject.toml,
+# Run the server package's test suite (61 tests) — has its own pyproject.toml,
 # so run it from server/, not the repo root
 cd server && ../.venv/bin/pytest
 

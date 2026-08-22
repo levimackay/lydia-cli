@@ -1,5 +1,6 @@
 """Unit tests for the SQLite-backed TokenStore — no server/app involved."""
 
+import stat
 import time
 
 import pytest
@@ -108,3 +109,80 @@ def test_store_persists_across_reopening_the_same_file(tmp_path) -> None:
         assert second.get("tok-1") == "alice"
     finally:
         second.close()
+
+
+def test_db_file_and_directory_are_owner_only(tmp_path) -> None:
+    """The database holds credential material (hashed, but still) — must
+    never be group/world-readable regardless of the caller's umask."""
+    db_path = tmp_path / "nested" / "tokens.sqlite3"
+    store = TokenStore(db_path)
+    try:
+        file_mode = stat.S_IMODE(db_path.stat().st_mode)
+        dir_mode = stat.S_IMODE(db_path.parent.stat().st_mode)
+        assert file_mode == 0o600
+        assert dir_mode == 0o700
+    finally:
+        store.close()
+
+
+def test_reopening_a_preexisting_file_tightens_its_permissions(tmp_path) -> None:
+    """A database created before this fix (or by anything else with a
+    looser umask) gets its permissions corrected on next open, not just
+    on first creation."""
+    db_path = tmp_path / "tokens.sqlite3"
+    db_path.touch()
+    db_path.chmod(0o644)
+
+    store = TokenStore(db_path)
+    try:
+        assert stat.S_IMODE(db_path.stat().st_mode) == 0o600
+    finally:
+        store.close()
+
+
+def test_revoke_user_revokes_every_active_token_for_that_user(store: TokenStore) -> None:
+    store.add("tok-1", "alice")
+    store.add("tok-2", "alice")
+    store.add("tok-3", "bob")
+
+    revoked_count = store.revoke_user("alice")
+
+    assert revoked_count == 2
+    assert store.get("tok-1") is None
+    assert store.get("tok-2") is None
+    assert store.get("tok-3") == "bob"  # a different user's token is untouched
+
+
+def test_revoke_user_does_not_recount_already_revoked_tokens(store: TokenStore) -> None:
+    store.add("tok-1", "alice")
+    store.revoke("tok-1")
+    assert store.revoke_user("alice") == 0
+
+
+def test_revoke_user_with_no_tokens_returns_zero(store: TokenStore) -> None:
+    assert store.revoke_user("nobody") == 0
+
+
+def test_stale_env_sourced_users_detects_a_dropped_env_token(store: TokenStore) -> None:
+    store.add("tok-1", "alice", source="env")
+    # alice's token is no longer in "this run's" env vars:
+    assert store.stale_env_sourced_users(current_env_tokens=set()) == ["alice"]
+
+
+def test_stale_env_sourced_users_ignores_tokens_still_present(store: TokenStore) -> None:
+    store.add("tok-1", "alice", source="env")
+    assert store.stale_env_sourced_users(current_env_tokens={"tok-1"}) == []
+
+
+def test_stale_env_sourced_users_ignores_cli_added_tokens(store: TokenStore) -> None:
+    """A token added via `lydia-server-token add` was never in an env var
+    to begin with — it not being in current_env_tokens is expected, not
+    something to warn about."""
+    store.add("tok-1", "alice", source="cli")
+    assert store.stale_env_sourced_users(current_env_tokens=set()) == []
+
+
+def test_stale_env_sourced_users_ignores_already_revoked_tokens(store: TokenStore) -> None:
+    store.add("tok-1", "alice", source="env")
+    store.revoke("tok-1")
+    assert store.stale_env_sourced_users(current_env_tokens=set()) == []

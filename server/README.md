@@ -56,13 +56,26 @@ given an expiry at runtime, with the server already running:
 ```bash
 lydia-server-token add alice                    # prints a token once — copy it now
 lydia-server-token add bob --expires-in 86400    # expires in 24h
-lydia-server-token revoke <token>
-lydia-server-token list                          # user, status, created/expiry — never the raw token
+lydia-server-token revoke-user alice             # revoke everything alice has — the practical path,
+                                                  # since the raw token above was never seen again after add
+echo "$TOKEN" | lydia-server-token revoke        # revoke one specific token, if you have it
+lydia-server-token list                          # user, status, source, created/expiry — never the raw token
 ```
+
+`revoke` deliberately does not take the token as a command-line argument
+— process arguments are visible to other local users for as long as the
+process runs (`ps`, `/proc/<pid>/cmdline`), which is exactly the kind of
+exposure a bearer token shouldn't have. It reads from stdin if piped, or
+prompts without echoing if you run it interactively.
 
 These operate on whatever `LYDIA_SERVER_TOKENS_DB` points at, same as the
 running server — run it on the same machine (or point `LYDIA_SERVER_TOKENS_DB`
-at the same file) to manage a remote server's tokens.
+at the same file) to manage a remote server's tokens. A token seeded from
+`LYDIA_SERVER_TOKEN`/`LYDIA_SERVER_TOKENS` keeps working even after you
+remove it from the env var and restart — that env var is only ever a
+bootstrap, never a revocation switch — the server logs a warning when
+that happens so it's not silent; use `revoke-user` if you actually meant
+to remove access.
 
 ## HTTPS
 
@@ -121,7 +134,7 @@ another class satisfying that same protocol.
 ## Development
 
 ```bash
-pytest   # 46 tests — chat/embed/models routes run against a fake ModelClient
+pytest   # 61 tests — chat/embed/models routes run against a fake ModelClient
          # double, token storage against a real tmp_path SQLite file; no
          # real Ollama needed either way
 ```

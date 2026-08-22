@@ -80,3 +80,41 @@ def test_a_token_added_at_runtime_survives_restart_without_being_named_in_env_va
     second_run_settings = get_settings()
 
     assert second_run_settings.tokens.get("runtime-token") == "carol"
+
+
+def test_dropping_an_env_token_between_restarts_logs_a_warning_not_silence(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    """Before the SQLite store existed, removing LYDIA_SERVER_TOKEN and
+    restarting was the only way to revoke it, and it worked silently
+    because the whole dict was rebuilt from scratch. Now the token
+    persists and keeps working — this pins that the silence specifically
+    is what got fixed, not the underlying behavior change itself (which
+    is intentional: an env var disappearing for an unrelated reason
+    shouldn't auto-revoke someone)."""
+    db_path = tmp_path / "tokens.sqlite3"
+    monkeypatch.setenv("LYDIA_SERVER_TOKENS_DB", str(db_path))
+    monkeypatch.setenv("LYDIA_SERVER_TOKEN", "solo-token")
+    monkeypatch.delenv("LYDIA_SERVER_TOKENS", raising=False)
+    get_settings()  # first startup: seeds solo-token as env-sourced
+
+    get_settings.cache_clear()
+    monkeypatch.delenv("LYDIA_SERVER_TOKEN")  # simulate the operator removing it
+    with caplog.at_level("WARNING"):
+        settings = get_settings()  # simulated restart, without that env var
+
+    assert settings.tokens.get("solo-token") == "default"  # still works — not auto-revoked
+    assert any("default" in record.message and "no longer named" in record.message for record in caplog.records)
+
+
+def test_env_var_still_present_on_restart_logs_no_warning(tmp_path, monkeypatch, caplog) -> None:
+    db_path = tmp_path / "tokens.sqlite3"
+    monkeypatch.setenv("LYDIA_SERVER_TOKENS_DB", str(db_path))
+    monkeypatch.setenv("LYDIA_SERVER_TOKEN", "solo-token")
+    get_settings()
+
+    get_settings.cache_clear()
+    with caplog.at_level("WARNING"):
+        get_settings()  # same env var still set
+
+    assert caplog.records == []

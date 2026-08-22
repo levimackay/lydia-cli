@@ -20,12 +20,15 @@ which `TokenStore` also implements.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
 from lydia_server.database.tokens import TokenStore
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TOKENS_DB_PATH = Path.home() / ".lydia" / "server" / "tokens.sqlite3"
 
@@ -39,18 +42,43 @@ def _load_tokens() -> TokenStore:
     Both may be set at once. Tokens added at runtime via `lydia-server-token`
     and never named in an env var are left alone — this only ever adds/
     refreshes the env-var-named ones, never removes anything.
+
+    Behavior change worth knowing about: before the SQLite store existed,
+    this rebuilt a plain dict from env vars on every startup, so removing
+    a token from LYDIA_SERVER_TOKEN(S) and restarting *was* how you
+    revoked it. That token now persists in the store and keeps working
+    after being dropped from the env var — env vars only ever add here,
+    never remove. The warning below is what keeps that from being silent;
+    it doesn't and shouldn't auto-revoke on your behalf (an env var
+    getting unset for an unrelated reason shouldn't kill someone's
+    access) — if you actually meant to revoke it, use
+    `lydia-server-token revoke` or `revoke-user`.
     """
     db_path = Path(os.environ.get("LYDIA_SERVER_TOKENS_DB", str(DEFAULT_TOKENS_DB_PATH)))
     store = TokenStore(db_path)
 
+    current_env_tokens: set[str] = set()
     single = os.environ.get("LYDIA_SERVER_TOKEN")
     if single:
-        store.add(single, "default")
+        store.add(single, "default", source="env")
+        current_env_tokens.add(single)
     multi = os.environ.get("LYDIA_SERVER_TOKENS", "")
     for pair in filter(None, (p.strip() for p in multi.split(","))):
         token, _, user_id = pair.partition(":")
         if token:
-            store.add(token, user_id or token)
+            store.add(token, user_id or token, source="env")
+            current_env_tokens.add(token)
+
+    stale_users = store.stale_env_sourced_users(current_env_tokens)
+    for user_id in stale_users:
+        logger.warning(
+            "Token for '%s' was previously set via LYDIA_SERVER_TOKEN(S) and is still "
+            "active, but is no longer named in the current env vars. It will keep "
+            "working until explicitly revoked — run `lydia-server-token revoke-user %s` "
+            "if you meant to remove its access.",
+            user_id,
+            user_id,
+        )
 
     return store
 

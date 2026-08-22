@@ -173,19 +173,48 @@ context — each one names the files to touch and what "done" looks like.
   site and `main.py`'s `if not settings.tokens:` startup guard both
   needed zero changes — `TokenStore` implements `.get()` and `__len__()`
   to match, exactly the seam the original design left for this.
-  New `lydia-server-token add/revoke/list` CLI (`cli.py`) for managing
-  tokens without touching SQLite directly; `add` prints the raw token
-  exactly once (only its hash is ever stored, so it can't be shown
+  New `lydia-server-token add/revoke/revoke-user/list` CLI (`cli.py`) for
+  managing tokens without touching SQLite directly; `add` prints the raw
+  token exactly once (only its hash is ever stored, so it can't be shown
   again). Verified against a real running server, not just tests: added
   a token via the CLI while the server was already running and used it
   immediately with no restart, then revoked a different token that was
   actively working and confirmed the very next request with it got a
-  401 — proving both directions (grant and revoke) take effect live. 25
-  new tests: `test_token_store.py` (add/get/expire/revoke/re-add/persist-
-  across-reopen, plus a direct check that raw tokens never land in the
-  database), `test_settings.py` (env-var seeding, and specifically that
-  a runtime-added token survives a simulated restart with no env var
-  naming it), `test_cli.py` (all three subcommands, including that
+  401 — proving both directions (grant and revoke) take effect live.
+
+  **Hardened same-day after an automated security review of the initial
+  version caught three real issues, all fixed:** (1) `revoke <token>`
+  originally took the raw token as a CLI argument — visible to other
+  local users via `ps`/`/proc/*/cmdline` for as long as the process ran.
+  It now reads the token from stdin (piped) or an unechoed `getpass`
+  prompt (interactive), never argv; added `revoke-user <user_id>`
+  alongside it, since an admin revoking someone *else's* access almost
+  never has their raw token to pass in the first place (it was only ever
+  shown once, to them, at `add` time) — this was a real usability gap in
+  the original design, not just a rename. (2) The SQLite file and its
+  parent directory were created with default-umask permissions (commonly
+  0o644 / 0o755 — group/world-readable); `TokenStore.__init__` now sets a
+  restrictive umask for the duration of file/directory creation and
+  explicitly `chmod`s both to 0o600/0o700, including tightening a
+  pre-existing file left over from before this fix. (3) The move from an
+  in-memory-only env-var dict to a persistent store quietly broke the
+  *only* revocation mechanism that existed before it: removing a token
+  from `LYDIA_SERVER_TOKEN(S)` and restarting used to actually revoke it
+  (the dict was rebuilt from scratch every startup); now that token
+  persists and keeps working, silently. Fixed by tracking each token's
+  `source` ('env' vs 'cli') and having `_load_tokens()` log a warning for
+  any active env-sourced token no longer named in the current env vars —
+  deliberately a warning, not an auto-revoke, since an env var
+  disappearing for an unrelated reason shouldn't kill someone's access on
+  its own. 39 new tests total (24 from the original implementation + 15
+  covering the three fixes): `test_token_store.py` (add/get/expire/
+  revoke/revoke_user/re-add/persist-across-reopen/file-permissions/
+  stale-env-detection, plus a direct check that raw tokens never land in
+  the database), `test_settings.py` (env-var seeding, a runtime-added
+  token surviving a simulated restart with no env var naming it, and
+  that the stale-env-token warning fires exactly when it should and
+  never otherwise), `test_cli.py` (every subcommand, including that
+  `revoke` rejects a positional token argument outright and that
   revoked/listed output never contains a raw token).
 - **Voice mode (2026-07-18).** Always-listening voice assistant — say "Hey Jarvis"
   to trigger the model, ask a question, and hear a spoken reply. `lydia listen`
