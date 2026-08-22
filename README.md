@@ -259,27 +259,39 @@ much as the "runs entirely on your machine" constraint allows.
 
 ## Running Lydia Server (remote/GPU inference)
 
-If you have a second machine with more RAM or a real GPU — a gaming PC,
-say — you can run inference there instead and keep using `lydia` normally
-from a laptop. **Tool execution (file edits, git, shell commands) always
-stays on whichever machine runs the CLI** — only chat/tool-call inference
-and embeddings go over the network. This means `lydia "fix this bug"`
-works exactly the same, from any directory, whether it's talking to a
-local Ollama or a remote one.
+Everything above is the whole story if you just want `lydia` talking to
+Ollama on the same machine — that's the default (`server_url` unset, see
+the Configuration table above) and nothing in this section is required
+for it. This section is for a different, opt-in setup: if you have a
+*second* machine with more RAM or a real GPU — a gaming PC, say — you can
+run inference there instead and keep using `lydia` normally from a
+laptop. **Tool execution (file edits, git, shell commands) always stays
+on whichever machine runs the CLI** — only chat/tool-call inference and
+embeddings go over the network. This means `lydia "fix this bug"` works
+exactly the same, from any directory, whether it's talking to a local
+Ollama or a remote one.
+
+`lydia-server` isn't published to PyPI (only the `lydia` CLI itself is —
+see [Install](#install)); it's a from-source install on the machine
+that's going to run it:
 
 ```bash
 # On the server machine (needs Ollama already running):
-pip install -e . -e server/            # from the repo root, one shared venv
-LYDIA_SERVER_TOKEN=<a-long-random-token> lydia-server
+git clone https://github.com/levimackay/lydia-cli.git && cd lydia-cli
+python3 -m venv .venv
+.venv/bin/pip install -e . -e server/
+LYDIA_SERVER_TOKEN=<a-long-random-token> .venv/bin/lydia-server
 
-# On the client machine:
+# On the client machine (however you installed `lydia` — pipx, pip, from
+# source, doesn't matter):
 lydia config set server_url https://<server-host>:<port>
 lydia config set api_key <the-same-token>
 lydia                                   # works exactly as before
 ```
 
-Full server configuration (env vars), API design, and the reasoning behind
-the client/server split live in [`server/README.md`](server/README.md).
+Full server configuration (env vars), API design, token management
+(`lydia-server-token`), and the reasoning behind the client/server split
+live in [`server/README.md`](server/README.md).
 
 ## Agent tools and the safety model
 
