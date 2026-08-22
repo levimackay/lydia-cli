@@ -107,6 +107,33 @@ def test_search_semantic_returns_results_when_indexed(tmp_path: Path) -> None:
     assert "auth.py" in result.content
 
 
+def test_search_semantic_refuses_when_provider_is_not_ollama(tmp_path: Path) -> None:
+    """The index's vectors are tied to whichever model embedded them
+    (always Ollama's today, see indexer.py::EMBED_MODEL) — nothing tracks
+    that per-index, so querying it through a different provider's embed()
+    could silently compare incompatible vectors rather than failing
+    cleanly. Must refuse outright instead."""
+    from lydia.context.indexer import Chunk
+    from lydia.database import sqlite as db
+
+    conn = db.connect(tmp_path)
+    db.insert_chunks(conn, [Chunk(path="auth.py", start_line=1, end_line=5, text="def login(): ...", content_hash="h")], [[1.0, 0.0]])
+    conn.commit()
+    conn.close()
+
+    class FakeClient:
+        def embed(self, model: str, inputs: list[str]) -> list[list[float]]:
+            raise AssertionError("must not attempt to embed at all for a non-ollama provider")
+
+    context = ToolContext(
+        root=tmp_path, config=LydiaConfig(provider="gemini"), confirm=lambda req: True, client=FakeClient()
+    )
+    result = get("search_semantic").handler({"query": "login handling"}, context)
+    assert not result.ok
+    assert "ollama provider" in result.content
+    assert "search_code" in result.content
+
+
 def test_remember_tool_is_safe_and_persists(tmp_path: Path) -> None:
     from lydia.agent.facts import load_facts
 

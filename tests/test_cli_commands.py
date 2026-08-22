@@ -19,6 +19,17 @@ def isolated_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def _use_fake_keyring(fake_keyring) -> None:
+    # config_show/config_set (gemini_api_key) touch the OS keychain now —
+    # every test in this file needs the fake backend, not just the ones
+    # that mention it explicitly, or a bare `config show` call ends up
+    # hitting the real keychain (works quietly on a dev machine that's
+    # already granted access; not something to rely on on a fresh CI
+    # runner that's never touched it before).
+    pass
+
+
 def test_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
@@ -101,6 +112,62 @@ def test_config_set_project_requires_project_root(tmp_path: Path) -> None:
     result = runner.invoke(app, ["config", "set", "model", "x", "--project"])
     assert result.exit_code == 1
     assert "Not inside a project" in result.stdout
+
+
+def test_config_set_gemini_api_key_with_value_arg_stores_in_keychain() -> None:
+    from lydia.config import secrets
+
+    result = runner.invoke(app, ["config", "set", "gemini_api_key", "test-key-abc"])
+    assert result.exit_code == 0
+    assert secrets.get_secret(secrets.GEMINI_API_KEY) == "test-key-abc"
+    # Never echoed to the terminal, even though it was passed on the CLI —
+    # confirmation output must not leak it into scrollback/shell history capture.
+    assert "test-key-abc" not in result.stdout
+
+
+def test_config_set_gemini_api_key_prompts_when_value_omitted() -> None:
+    from lydia.config import secrets
+
+    result = runner.invoke(app, ["config", "set", "gemini_api_key"], input="prompted-key-xyz\n")
+    assert result.exit_code == 0
+    assert secrets.get_secret(secrets.GEMINI_API_KEY) == "prompted-key-xyz"
+    assert "prompted-key-xyz" not in result.stdout
+
+
+def test_config_set_gemini_api_key_rejects_project_flag() -> None:
+    result = runner.invoke(app, ["config", "set", "gemini_api_key", "x", "--project"])
+    assert result.exit_code == 1
+    assert "keychain" in result.stdout.lower()
+
+
+def test_config_set_gemini_api_key_does_not_touch_config_json() -> None:
+    result = runner.invoke(app, ["config", "set", "gemini_api_key", "test-key-abc"])
+    assert result.exit_code == 0
+    # No config.json should have been created/written for a keychain-only key.
+    config_file = Path.cwd() / ".lydia" / "config.json"
+    assert not config_file.exists()
+
+
+def test_config_show_reports_gemini_key_presence_not_value() -> None:
+    from lydia.config import secrets
+
+    before = runner.invoke(app, ["config", "show"])
+    assert "gemini_api_key = not set" in before.stdout
+
+    secrets.set_secret(secrets.GEMINI_API_KEY, "real-key-value")
+    after = runner.invoke(app, ["config", "show"])
+    assert "gemini_api_key = set" in after.stdout
+    assert "real-key-value" not in after.stdout
+
+
+def test_index_refuses_when_provider_is_not_ollama(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_home = tmp_path / "home"
+    monkeypatch.setattr("lydia.config.settings.GLOBAL_DIR", fake_home / ".lydia")
+    runner.invoke(app, ["config", "set", "provider", "gemini"])
+
+    result = runner.invoke(app, ["index"])
+    assert result.exit_code == 1
+    assert "ollama provider" in result.stdout
 
 
 def test_restore_list_empty(tmp_path: Path) -> None:

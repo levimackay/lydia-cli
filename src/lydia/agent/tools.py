@@ -166,6 +166,20 @@ def _search_semantic(args: dict, ctx: ToolContext) -> ToolResult:
         )
     if ctx.client is None:
         return ToolResult(ok=False, content="No Ollama connection available for semantic search.", summary="error")
+    if ctx.config.provider != "ollama":
+        # The index's embedding vectors are tied to whatever model built
+        # them (indexer.py::EMBED_MODEL, currently always Ollama's
+        # nomic-embed-text — see build_semantic_index's own guard in
+        # cli/main.py) — nothing tracks dimensionality/model per-index, so
+        # querying it through a different provider's embed() wouldn't
+        # just fail cleanly, it could silently compare incompatible
+        # vectors. Refuse rather than guess.
+        return ToolResult(
+            ok=False,
+            content=f"Semantic search needs the ollama provider (currently: {ctx.config.provider}). "
+            "Use search_code for literal search instead.",
+            summary="unsupported with this provider",
+        )
 
     query = args["query"]
     results = retriever.search(ctx.root, ctx.client, query, top_k=args.get("top_k", 8))

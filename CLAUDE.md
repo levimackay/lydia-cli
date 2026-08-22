@@ -23,7 +23,7 @@ shared venv for local dev.
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/pip install -e "server/[dev]"
 
-# Run the CLI package's test suite (381 tests)
+# Run the CLI package's test suite (410 tests)
 .venv/bin/pytest
 .venv/bin/pytest tests/test_agent_loop.py                                   # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer # one test
@@ -216,12 +216,17 @@ detailed next-steps plan. Short version: Milestones 1 (CLI + streaming
 chat), 2 (semantic retrieval), 3 (agent loop + tool calling + git), 6
 (persistent project memory), the client/server split (`server/`, remote
 inference over Tailscale) with connection pooling and real SQLite-backed
-multi-user token storage on top of it, are all done. What's left is
-mostly deferred server work that the current design doesn't block but
-doesn't need yet (non-Ollama providers, a task queue, AMD GPU
-verification on the actual target hardware) plus M7 (plugins, no design
-started). Check `ROADMAP.md` before picking up new work — it has
-file-level pointers and the reasoning behind past ordering decisions
+multi-user token storage on top of it, and a first non-Ollama provider
+(Gemini, opt-in, `config.provider = "gemini"` — `llm/gemini_client.py`)
+are all done. What's left is mostly deferred server work that the
+current design doesn't block but doesn't need yet (OpenAI/Anthropic and
+a server-side non-Ollama provider, a task queue, AMD GPU verification on
+the actual target hardware) plus M7 (plugins, no design started) and
+properly multi-provider semantic search (today it refuses outright on
+any provider but ollama, rather than risk mixing incompatible embedding
+vectors — see the Gemini roadmap entry). Check `ROADMAP.md` before
+picking up new work — it has file-level pointers and the reasoning
+behind past ordering decisions
 (e.g. why M3 shipped before M2).
 
 ## Standing preferences for this repo

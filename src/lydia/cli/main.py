@@ -196,6 +196,18 @@ def build_semantic_index(
         raise typer.Exit(1)
     root = path.resolve()
     config = load_config(project_root=root)
+    if config.provider != "ollama":
+        # See agent/tools.py::_search_semantic's matching guard — the index
+        # format is tied to whichever model embeds it (EMBED_MODEL below,
+        # currently always Ollama's), and nothing tracks that per-index, so
+        # building (or querying) it through another provider isn't just
+        # unsupported, it'd risk silently mixing incompatible vectors.
+        ui.print_error(
+            f"Semantic indexing needs the ollama provider (currently: {config.provider}). "
+            "Run `lydia config set provider ollama` first, or skip this — search_code "
+            "(literal search) works regardless of provider."
+        )
+        raise typer.Exit(1)
     with build_client(config) as client:
         if not client.is_alive():
             target = config.server_url or config.ollama_host
@@ -287,18 +299,60 @@ def config_show() -> None:
     for key, value in vars(config).items():
         shown = value if value is not None else f"[dim]{unset_labels.get(key, 'not set')}[/dim]"
         ui.console.print(f"  {key} = {shown}")
+    # Provider API keys live in the OS keychain (config/secrets.py), never
+    # in this JSON config, so they're not in vars(config) above — shown
+    # separately, presence only, never the value itself.
+    from lydia.config import secrets as _secrets
+
+    try:
+        has_gemini_key = bool(_secrets.get_secret(_secrets.GEMINI_API_KEY))
+    except _secrets.SecretsError:
+        has_gemini_key = False
+    ui.console.print(f"  gemini_api_key = [dim]{'set' if has_gemini_key else 'not set'}[/dim]")
 
 
 SECRET_KEYS = {"api_key"}
+
+# Keys that don't go into config.json at all — routed to the OS keychain
+# instead (config/secrets.py). Stronger than SECRET_KEYS above (which
+# still writes plain JSON, just blocks --project): these are third-party,
+# personally-billed API keys, the same category as Gmail/Outlook/Canvas
+# credentials, not a self-issued bearer token like `api_key`.
+KEYCHAIN_CONFIG_KEYS = {"gemini_api_key": "GEMINI_API_KEY"}
 
 
 @config_app.command("set")
 def config_set(
     key: str = typer.Argument(..., help="Config key, e.g. model"),
-    value: str = typer.Argument(..., help="New value"),
+    value: str | None = typer.Argument(
+        None, help="New value. For a keychain key (e.g. gemini_api_key), omit this to be prompted without echoing."
+    ),
     project: bool = typer.Option(False, "--project", "-p", help="Write to the project config instead of global."),
 ) -> None:
     """Set a configuration value, e.g. `lydia config set model qwen3.5:9b`."""
+    if key in KEYCHAIN_CONFIG_KEYS:
+        if project:
+            ui.print_error(
+                f"'{key}' is a provider API key — it always goes to the OS keychain, machine-wide, "
+                "never a project config. Drop --project."
+            )
+            raise typer.Exit(1)
+        if value is None:
+            value = typer.prompt(f"{key}", hide_input=True)
+        from lydia.config import secrets as _secrets
+
+        secret_const = getattr(_secrets, KEYCHAIN_CONFIG_KEYS[key])
+        try:
+            _secrets.set_secret(secret_const, value)
+        except _secrets.SecretsError as exc:
+            ui.print_error(str(exc))
+            raise typer.Exit(1)
+        ui.print_info(f"Set {key} (stored in the system keychain, not printed here).")
+        return
+
+    if value is None:
+        ui.print_error(f"'{key}' needs a value: lydia config set {key} <value>")
+        raise typer.Exit(1)
     if project and key in SECRET_KEYS:
         ui.print_error(
             f"'{key}' can't be set with --project — <project>/.lydia/config.json is meant to be "

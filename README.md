@@ -228,6 +228,7 @@ Layered JSON config — project overrides global:
 | `keep_alive` | `30m` | How long Ollama keeps the model loaded after a request; avoids a multi-second reload on your next message. Ollama duration string, or `-1` to never unload |
 | `server_url` | not set | If set, talk to a remote Lydia Server instead of a local Ollama daemon — see [Running Lydia Server](#running-lydia-server-remote-gpu-inference) |
 | `api_key` | not set | Bearer token for `server_url` |
+| `provider` | `ollama` | `ollama` (default, local, no API key) or `gemini` (opt-in, bring your own key) — see [Using Gemini instead of Ollama](#using-gemini-instead-of-ollama) |
 | `canvas_base_url` | not set | Your school's Canvas URL, e.g. `https://school.instructure.com`; see [Personal assistant](#personal-assistant) |
 | `briefing_schedule_enabled` / `briefing_schedule_time` | `false` / `08:00` | Managed by `lydia briefing schedule enable/disable`, not usually set directly |
 
@@ -309,6 +310,41 @@ lydia                                   # works exactly as before
 Full server configuration (env vars), API design, token management
 (`lydia-server-token`), and the reasoning behind the client/server split
 live in [`server/README.md`](server/README.md).
+
+## Using Gemini instead of Ollama
+
+Neither a beefy enough laptop nor a second machine to run as a server?
+There's a third option: bring your own Gemini API key and skip local
+inference entirely. This is opt-in — the default is still 100% local,
+and this doesn't change that for anyone who doesn't turn it on:
+
+```bash
+lydia config set provider gemini
+lydia config set gemini_api_key            # prompts, hidden input — never a CLI argument
+lydia config set model gemini-2.5-flash    # or gemini-2.5-pro
+lydia                                       # everything else works exactly the same
+```
+
+Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+The key is stored in your OS keychain (same mechanism as the Gmail/Outlook/
+Canvas connectors — see [Personal assistant](#personal-assistant)), never
+in plain `config.json`, and `lydia config show` only ever reports whether
+it's set, not the value.
+
+Chat, tool calling, and embeddings all work through Gemini — verified
+against the real API, not just mocked tests (see `llm/gemini_client.py`'s
+module docstring for exactly what was checked). One real gap: **semantic
+search (`lydia index` / the `search_semantic` tool) still needs the
+`ollama` provider.** The index's vectors are tied to whichever model
+embedded them, and nothing tracks that per-index, so switching providers
+on an existing index isn't just unsupported, it'd risk silently comparing
+incompatible vectors — both `lydia index` and `search_semantic` refuse
+outright with `provider=gemini` rather than doing that. `search_code`
+(literal search) works regardless of provider.
+
+Same architecture point as everywhere else in this codebase: `GeminiClient`
+is just another class satisfying `llm/protocol.py::ModelClient` — adding
+OpenAI or Anthropic later is the same shape of change, not a redesign.
 
 ## Agent tools and the safety model
 
@@ -518,7 +554,7 @@ useful for a human too.
 ## Development
 
 ```bash
-.venv/bin/pytest                                    # CLI suite (381 tests, no Ollama required)
+.venv/bin/pytest                                    # CLI suite (410 tests, no Ollama required)
 .venv/bin/pytest tests/test_agent_loop.py            # one file
 .venv/bin/pytest tests/test_agent_loop.py::test_tool_call_then_final_answer  # one test
 

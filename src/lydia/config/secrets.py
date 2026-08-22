@@ -25,6 +25,7 @@ OUTLOOK_CLIENT_ID = "outlook_client_id"
 OUTLOOK_AUTHORITY = "outlook_authority"
 CANVAS_TOKEN = "canvas_token"
 NTFY_TOPIC = "ntfy_topic"
+GEMINI_API_KEY = "gemini_api_key"
 
 
 class SecretsError(Exception):

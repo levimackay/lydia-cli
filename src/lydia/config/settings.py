@@ -48,6 +48,13 @@ class LydiaConfig:
     # today's behavior, unchanged.
     server_url: str | None = None
     api_key: str | None = None  # bearer token for server_url, if set
+    # "ollama" (default, local-only, no API key) or "gemini" (opt-in,
+    # bring-your-own-key — see llm/gemini_client.py and llm/factory.py).
+    # Never auto-selected; the "no API keys required" premise only holds
+    # for anyone who doesn't explicitly opt into this. The actual key
+    # lives in the OS keychain (config/secrets.py::GEMINI_API_KEY), not
+    # here — this field only says which provider is active.
+    provider: str = "ollama"
     # Shell command to check the project still works, e.g. "pytest -q". If
     # set, the system prompt tells the model to run it (via run_command)
     # after making code changes and fix any failures before finishing.

@@ -263,6 +263,53 @@ context — each one names the files to touch and what "done" looks like.
   untouched, unrelated exceptions aren't swallowed) and one in
   `test_cli_auth.py` simulating the assistant extra genuinely being
   absent end-to-end through `auth status`.
+- **Gemini as a non-Ollama provider (2026-08-22).** First real use of the
+  `ModelClient` seam beyond Ollama/RemoteClient — `llm/gemini_client.py`,
+  selected via `config.provider = "gemini"` (default stays `"ollama"`;
+  never auto-selected, same "no API keys required unless you opt in"
+  rule as everywhere else). `lydia config set gemini_api_key` (prompts,
+  hidden input, never a CLI argument) stores the key in the OS keychain
+  via a new `KEYCHAIN_CONFIG_KEYS` mechanism in `cli/main.py::config_set`
+  — the same keychain `config/secrets.py` already used for Gmail/Outlook/
+  Canvas, not plain `config.json` (that's deliberately reserved for
+  self-issued things like `server_url`'s `api_key`, per the module
+  docstring's own stated distinction — a third-party billed key is a
+  different trust category).
+
+  Wire format was verified empirically against the real API before
+  writing any code, not assumed from docs — same discipline this
+  project already uses for Ollama's tool-calling gotchas: functionCall/
+  functionResponse shapes, that lowercase JSON Schema type names work
+  as-is, that `alt=sse` streaming returns one complete JSON object per
+  `data:` line (no partial-JSON accumulation needed), and that omitting
+  the 2.5-series `thoughtSignature` opaque field on a function-response
+  round-trip doesn't break anything (reasoning-continuity nicety, not
+  required for correctness — noted as a possible future enhancement).
+  Chat, streaming, tool-calling (including the round-trip), and
+  embeddings all re-verified end-to-end against the live API after
+  implementation, not just the mocked test suite.
+
+  Real gap found and closed rather than shipped broken: semantic search
+  (`lydia index` / the `search_semantic` tool) hardcodes an
+  Ollama-specific embed model name (`context/indexer.py::EMBED_MODEL`)
+  with no per-index record of which model/dimensionality built it —
+  switching providers on an existing index wouldn't fail cleanly, it'd
+  risk silently comparing incompatible vectors. Both call sites now
+  refuse outright with a clear message when `provider != "ollama"`
+  instead of attempting it; `search_code` (literal) is unaffected.
+  Properly wiring multi-provider semantic search (per-index model/
+  dimension tracking, re-embed-on-provider-switch) is real remaining
+  work, not done here — scoped out deliberately rather than rushed.
+
+  29 new tests (410 total, up from 381): `test_gemini_client.py` (message/
+  tool-schema conversion, SSE parsing including multi-chunk accumulation,
+  the tool-call round-trip, 401/connection-error handling, that the API
+  key goes in a header not a URL query param), `test_factory.py` (gemini
+  selection, missing-key behavior, provider defaults to ollama),
+  `test_cli_commands.py` (keychain routing, hidden-input prompting, the
+  `--project` rejection, `config show` reporting presence not value, the
+  `lydia index` provider guard), and one in `test_agent_tools.py` for the
+  `search_semantic` provider guard.
 - **Voice mode (2026-07-18).** Always-listening voice assistant — say "Hey Jarvis"
   to trigger the model, ask a question, and hear a spoken reply. `lydia listen`
   runs the loop in the foreground; `lydia listen enable/disable/status` manage
@@ -302,11 +349,16 @@ extends (a new tool? a new slash command? both?) before writing code.
 Not started, not blocked by the current design — see `server/README.md`
 and `ROADMAP.md`'s history for the client/server split entry above:
 
-- **Non-Ollama providers** (OpenAI, Anthropic, Gemini) — opt-in, bring
-  your own key, never the default (that would compromise the whole "no
-  API keys required" premise for anyone not opting in). Each is just a
-  new class satisfying `lydia.llm.protocol.ModelClient`; `services/ollama_provider.py`
-  is the only file that currently decides which one gets constructed.
+- **Non-Ollama providers for the *server* specifically** — letting a
+  Lydia Server proxy to a hosted model instead of local Ollama (so a
+  remote `lydia` client gets a hosted model through the same `/v1/*`
+  API). `services/ollama_provider.py` is the only file that currently
+  decides which provider gets constructed server-side. Narrower than it
+  used to be: the CLI-*direct* case (no server involved at all) is done
+  — see "Gemini as a non-Ollama provider" below — this item is now
+  specifically about wiring the same idea into `server/`, plus OpenAI/
+  Anthropic either way. Same rule applies: opt-in, bring your own key,
+  never the default.
 - **Task queue / background jobs, project indexing service, vector DB
   beyond the current SQLite approach, web dashboard.** All from the
   original project scoping; none designed yet.
