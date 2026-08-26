@@ -92,6 +92,7 @@ class IndexStats:
     files_indexed: int = 0
     files_removed: int = 0
     chunks_indexed: int = 0
+    error: str | None = None  # why indexing stopped early, if it did
 
 
 def build_index(project_root: Path, client: ModelClient, force: bool = False) -> IndexStats:
@@ -123,17 +124,25 @@ def build_index(project_root: Path, client: ModelClient, force: bool = False) ->
             try:
                 embeddings = _embed_all(client, [c.text for c in chunks])
             except OllamaError as exc:
-                logger.warning("Could not embed %s: %s", relative, exc)
-                continue
+                # An embedding failure is never about one file (Ollama went
+                # away, the embed model is missing), so retrying per file
+                # only repeats the same error for every remaining file and
+                # then reports "embedded 0 files" as if that were fine.
+                logger.warning("Stopped indexing at %s: %s", relative, exc)
+                stats.error = str(exc)
+                break
 
             db.delete_path(conn, relative)
             db.insert_chunks(conn, chunks, embeddings)
             stats.files_indexed += 1
             stats.chunks_indexed += len(chunks)
 
-        for stale_path in db.indexed_paths(conn) - seen_paths:
-            db.delete_path(conn, stale_path)
-            stats.files_removed += 1
+        if stats.error is None:
+            # Only after a complete walk: after an early stop, every file
+            # not yet reached would look deleted and be swept from the index.
+            for stale_path in db.indexed_paths(conn) - seen_paths:
+                db.delete_path(conn, stale_path)
+                stats.files_removed += 1
 
         conn.commit()
     finally:

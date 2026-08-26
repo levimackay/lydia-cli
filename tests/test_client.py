@@ -147,3 +147,32 @@ def test_extract_error_passes_through_other_errors_unchanged() -> None:
 
 def test_extract_error_falls_back_for_non_json_body() -> None:
     assert extract_error("not json", 500) == "HTTP 500: not json"
+
+
+def test_stream_cut_off_before_done_raises() -> None:
+    """A stream that ends without a done chunk was truncated (daemon killed,
+    connection dropped); it must surface as an error, not a finished reply."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=ndjson({"message": {"content": "Hel"}, "done": False}))
+
+    with pytest.raises(OllamaError, match="before the reply finished"):
+        list(make_client(handler).chat_stream("m", [Message("user", "hi")]))
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ({"path": "a.py"}, {"path": "a.py"}),  # Ollama's own shape: a JSON object
+    ('{"path": "a.py"}', {"path": "a.py"}),  # OpenAI-style: the object as a JSON string
+    (None, {}),  # omitted entirely
+    ("not json", "not json"),  # undecodable: passed through for execute_tool to report
+])
+def test_tool_call_arguments_are_normalised(raw, expected) -> None:
+    line = json.dumps({
+        "message": {"content": "", "tool_calls": [{"function": {"name": "read_file", "arguments": raw}}]},
+        "done": False,
+    })
+    assert parse_chat_line(line).tool_calls[0].arguments == expected
+
+
+def test_done_reason_is_kept_in_stats() -> None:
+    line = json.dumps({"message": {"content": ""}, "done": True, "done_reason": "length", "eval_count": 3})
+    assert parse_chat_line(line).stats == {"eval_count": 3, "done_reason": "length"}

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
+from typing import Any
 
 import httpx
 
@@ -132,14 +133,7 @@ class OllamaClient:
                 if response.status_code != 200:
                     body = response.read().decode("utf-8", errors="replace")
                     raise OllamaError(extract_error(body, response.status_code))
-                for line in response.iter_lines():
-                    if not line.strip():
-                        continue
-                    chunk = parse_chat_line(line)
-                    if chunk is not None:
-                        yield chunk
-                        if chunk.done:
-                            return
+                yield from parse_chat_stream(response.iter_lines())
         except httpx.ConnectError as exc:
             raise OllamaConnectionError(self.host) from exc
         except httpx.HTTPError as exc:
@@ -162,7 +156,7 @@ def extract_error(body: str, status: int) -> str:
         return f"HTTP {status}: {body[:200]}"
     if isinstance(message, str) and "does not support tools" in message:
         message += (
-            " (this model's Ollama chat template has no tool-calling support at all — "
+            " (this model's Ollama chat template has no tool-calling support at all; "
             "pull one that does, e.g. `ollama pull qwen3.5` or a llama3.1+ model, on "
             "whichever Ollama instance is actually handling the request)"
         )
@@ -219,6 +213,40 @@ def serialize_chat_chunk(chunk: ChatChunk) -> dict:
     return line
 
 
+def parse_chat_stream(lines: Iterable[str]) -> Iterator[ChatChunk]:
+    """Turn a stream of NDJSON lines into ChatChunks, stopping at the done chunk.
+
+    Shared by `OllamaClient` and `RemoteClient`. A stream that ends before
+    Ollama sent `done: true` was cut off (daemon killed, proxy dropped the
+    connection, the server's generator died) and must not be passed off as
+    a finished reply: the caller would show a truncated answer, or a tool
+    call that never arrived, with no sign anything went wrong.
+    """
+    for line in lines:
+        if not line.strip():
+            continue
+        chunk = parse_chat_line(line)
+        if chunk is not None:
+            yield chunk
+            if chunk.done:
+                return
+    raise OllamaError("The response stream ended before the reply finished (connection dropped?).")
+
+
+def _tool_arguments(raw: Any) -> Any:
+    """Ollama sends tool arguments as a JSON object, but an OpenAI-style
+    backend behind a Lydia Server sends them as a JSON *string*; decode
+    that so tools see a dict either way. Anything undecodable is passed
+    through as-is so `execute_tool` can tell the model exactly what it got
+    instead of failing on a KeyError deep inside a handler."""
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return raw
+    return raw or {}
+
+
 def parse_chat_line(line: str) -> ChatChunk | None:
     """Parse one NDJSON line from Ollama's /api/chat streaming shape.
 
@@ -237,14 +265,16 @@ def parse_chat_line(line: str) -> ChatChunk | None:
     tool_calls = [
         ToolCall(
             name=tc.get("function", {}).get("name", ""),
-            arguments=tc.get("function", {}).get("arguments", {}) or {},
+            arguments=_tool_arguments(tc.get("function", {}).get("arguments")),
         )
         for tc in message.get("tool_calls") or []
     ]
     if data.get("done"):
+        # done_reason is "length" when the reply hit the token limit, i.e.
+        # the answer was cut off mid-thought; keep it so callers can say so.
         stats = {
             k: data[k]
-            for k in ("total_duration", "eval_count", "prompt_eval_count")
+            for k in ("total_duration", "eval_count", "prompt_eval_count", "done_reason")
             if k in data
         }
         return ChatChunk(

@@ -8,9 +8,13 @@ limitation for this REPL).
 
 from pathlib import Path
 
+import pytest
+
 from lydia.agent.tools import ToolContext, build_registry
+from lydia.cli import chat as chat_mod
 from lydia.cli.chat import VALID_MODES, ChatSession, _apply_mode, _handle_slash
 from lydia.config.settings import LydiaConfig
+from lydia.llm.client import OllamaError
 
 
 class _FakeClient:
@@ -77,3 +81,48 @@ def test_session_todos_persist_across_turns_via_shared_reference(tmp_path: Path)
     ctx_turn_two = ToolContext(root=tmp_path, config=session.config, confirm=lambda req: True, todos=session.todos)
     update_todos.handler({"todos": [{"content": "step 1", "status": "completed"}]}, ctx_turn_two)
     assert session.todos[0].status == "completed"
+
+
+def test_send_pops_user_message_on_ollama_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise(**kwargs):
+        raise OllamaError("connection refused")
+
+    monkeypatch.setattr(chat_mod, "run_agent_turn", _raise)
+    session = make_session(tmp_path)
+    session.send("hello")
+    # No paired reply, so the failed turn must leave no trace: a later turn's
+    # user message must not land right after this one (see run_agent_turn's
+    # own del messages[start:] rollback in agent/loop.py, which this pairs with).
+    assert session.messages == []
+
+
+def test_send_pops_user_message_on_keyboard_interrupt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise(**kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(chat_mod, "run_agent_turn", _raise)
+    session = make_session(tmp_path)
+    session.send("hello")
+    assert session.messages == []
+
+
+def test_send_after_a_failed_turn_does_not_leave_two_consecutive_user_messages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+
+    def _fake_turn(**kwargs):
+        calls.append(kwargs["messages"])
+        if len(calls) == 1:
+            raise OllamaError("connection refused")
+        kwargs["messages"].append(chat_mod.Message(role="assistant", content="hi there"))
+        return "hi there", {}
+
+    monkeypatch.setattr(chat_mod, "run_agent_turn", _fake_turn)
+    session = make_session(tmp_path)
+
+    session.send("first, this one fails")
+    session.send("second, this one succeeds")
+
+    roles = [m.role for m in session.messages]
+    assert roles == ["user", "assistant"]  # not ["user", "user", "assistant"]

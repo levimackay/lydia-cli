@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from lydia.agent.loop import MAX_TOOL_ITERATIONS, default_stream_fn, run_agent_turn
 from lydia.agent.tools import ToolContext, ToolResult, ToolSpec, build_registry
 from lydia.config.settings import LydiaConfig
@@ -126,3 +128,52 @@ def test_stops_after_max_iterations(tmp_path: Path) -> None:
     )
     assert "stopped" in reply.lower()
     assert len(client.calls) == MAX_TOOL_ITERATIONS
+
+
+def test_missing_required_argument_is_reported_to_model(tmp_path: Path) -> None:
+    client = FakeClient([
+        [ChatChunk(tool_calls=[ToolCall(name="read_file", arguments={})], done=True)],
+        [ChatChunk(content="I need a path.", done=True)],
+    ])
+    messages: list[Message] = [Message(role="user", content="read it")]
+    reply, _ = run_agent_turn(
+        client=client, model="m", temperature=0.7, num_ctx=8192, think=None,
+        system_prompt="sys", messages=messages, registry=build_registry(),
+        ctx=make_ctx(tmp_path), stream_fn=default_stream_fn,
+    )
+    assert reply == "I need a path."
+    assert "Missing required argument 'path' for read_file" in messages[2].content
+
+
+def test_non_object_arguments_are_reported_to_model(tmp_path: Path) -> None:
+    client = FakeClient([
+        [ChatChunk(tool_calls=[ToolCall(name="read_file", arguments="a.py")], done=True)],
+        [ChatChunk(content="Let me retry.", done=True)],
+    ])
+    messages: list[Message] = [Message(role="user", content="read it")]
+    reply, _ = run_agent_turn(
+        client=client, model="m", temperature=0.7, num_ctx=8192, think=None,
+        system_prompt="sys", messages=messages, registry=build_registry(),
+        ctx=make_ctx(tmp_path), stream_fn=default_stream_fn,
+    )
+    assert reply == "Let me retry."
+    assert "must be a JSON object" in messages[2].content
+    assert "'a.py'" in messages[2].content
+
+
+def test_interrupted_turn_leaves_no_half_finished_exchange(tmp_path: Path) -> None:
+    """Ctrl-C at the confirmation prompt happens inside the tool handler;
+    the assistant's tool call must not stay in history without its result."""
+    def interrupted(args: dict, ctx: ToolContext) -> ToolResult:
+        raise KeyboardInterrupt
+
+    registry = [ToolSpec("slow", "hangs", {"type": "object", "properties": {}}, "safe", interrupted)]
+    client = FakeClient([[ChatChunk(tool_calls=[ToolCall(name="slow", arguments={})], done=True)]])
+    messages: list[Message] = [Message(role="user", content="go")]
+    with pytest.raises(KeyboardInterrupt):
+        run_agent_turn(
+            client=client, model="m", temperature=0.7, num_ctx=8192, think=None,
+            system_prompt="sys", messages=messages, registry=registry,
+            ctx=make_ctx(tmp_path), stream_fn=default_stream_fn,
+        )
+    assert [m.role for m in messages] == ["user"]

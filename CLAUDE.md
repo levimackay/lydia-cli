@@ -122,7 +122,8 @@ hermetic storage without filesystem side effects.
 `voice/` is the always-listening voice assistant. `run_loop` orchestrates the
 lifecycle (wake detection, transcription, model inference, speech synthesis) and
 is invoked from `cli/main.py::listen_run`. It uses `faster_whisper` for
-speech-to-text and `piper` for synthesis, both running locally. Tests never
+speech-to-text and macOS's built-in `say` command for synthesis, both
+running locally. Tests never
 open the microphone or load models (test audio frames and mocked model clients
 instead); the CLI tests verify wiring only. The launchd plist generation for
 always-on listening lives in `cli/scheduler.py`, mirroring the automations and

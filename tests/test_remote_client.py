@@ -126,3 +126,13 @@ def test_embed_empty_input_short_circuits() -> None:
         raise AssertionError("should not make a request for empty input")
 
     assert make_remote(handler).embed("m", []) == []
+
+
+def test_stream_cut_off_before_done_raises() -> None:
+    """Same guarantee as OllamaClient: a server that drops mid-reply must
+    not look like a short but finished answer."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=ndjson({"message": {"content": "Hel"}, "done": False}))
+
+    with pytest.raises(OllamaError, match="before the reply finished"):
+        list(make_remote(handler).chat_stream("m", [Message("user", "hi")]))

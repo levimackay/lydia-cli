@@ -16,11 +16,16 @@ of those.
   incompatibility creeps in (deprecations, stdlib changes) it won't be
   caught until it ships. Worth either adding 3.14 to the matrix or
   deliberately deciding not to and noting why.
+  **Resolved 2026-08-26:** 3.14 added to the CI matrix; it now runs all
+  four of 3.11, 3.12, 3.13, 3.14.
 - `CLAUDE.md`'s "Commands" section still says the CLI suite is "270 tests",
   which is stale; the actual count is 367 (verified by running `pytest`).
   Didn't fix it since CLAUDE.md maintenance is explicitly a separate concern
   from README/NOTES work, but it's a quick one-line fix whenever someone's
   next in there.
+  **Resolved by 2026-08-26:** `CLAUDE.md` now says 413, the current count
+  (verified again this pass; the CLI suite grew from 367 to 413 between
+  2026-07-20 and now).
 - Both `CLAUDE.md` (architecture section, under `voice/`) and `ROADMAP.md`
   (Voice mode entry) say voice synthesis uses **`piper`**. It doesn't:
   `src/lydia/voice/tts.py` shells out to macOS's built-in `say` command
@@ -31,6 +36,8 @@ of those.
   implementation. Same scope note as above: didn't touch CLAUDE.md; flagging
   ROADMAP.md too since it's not README/NOTES either, but worth a follow-up
   edit given how confidently it's stated in both places.
+  **Resolved 2026-08-26:** both `CLAUDE.md` and `ROADMAP.md` now say `say`,
+  not `piper`.
 - `lydia automations remove <name>` (`cli/main.py::automations_remove`)
   existed in code but was missing from the README's command table, so it was
   added in this pass. `lydia automations tick` was correctly left out; its own
@@ -61,16 +68,15 @@ of those.
 
 ## Ideas / next steps worth considering
 
-- Since CI doesn't cover 3.14 but local dev already lives there, either bump
-  the matrix or pin local dev to 3.13 to match what's actually tested.
-  Right now there's a silent gap between "works on my machine" and "works
-  in CI."
+- Done 2026-08-26: 3.14 added to the CI matrix, closing the gap between
+  local dev and CI described above.
 - The `piper` vs `say` inconsistency above is a good candidate for a
   five-minute cleanup pass across `CLAUDE.md` + `ROADMAP.md` next time
   either file is opened for something else: cheap to fix, currently
   actively misleading about a real implementation detail (`say` is
   macOS-only and blocking-per-call; `piper` would have been cross-platform
-  and a background process, so this isn't a cosmetic difference).
+  and a background process, so this isn't a cosmetic difference). **Done
+  2026-08-26.**
 - `ROADMAP.md`'s "Smaller polish items" already tracks packaging
   (PyPI/brew) as unstarted. Confirmed still true: `pyproject.toml` has no
   publish workflow and the README's install instructions are still

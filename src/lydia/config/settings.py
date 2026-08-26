@@ -88,6 +88,8 @@ class LydiaConfig:
 
     @property
     def think_flag(self) -> bool | None:
+        if isinstance(self.think, bool):
+            return self.think  # a hand-edited config.json saying "think": false
         return {"on": True, "off": False}.get(self.think)
 
     def merged_with(self, overrides: dict[str, Any]) -> "LydiaConfig":
@@ -95,28 +97,47 @@ class LydiaConfig:
         known = {f.name for f in fields(self)}
         data = asdict(self)
         for key, value in overrides.items():
-            if key in known:
-                data[key] = value
-            else:
+            if key not in known:
                 logger.warning("Ignoring unknown config key: %s", key)
+                continue
+            if isinstance(value, str):
+                # A hand-edited file can hold "16384" where an int is expected;
+                # sent as-is, Ollama rejects the request with an opaque type
+                # error, and an unknown mode/think value is silently treated
+                # as the default. Coerce, and skip anything invalid.
+                try:
+                    value = coerce_value(key, value)
+                except ValueError as exc:
+                    logger.warning("Ignoring invalid config value for %s: %s", key, exc)
+                    continue
+            data[key] = value
         return LydiaConfig(**data)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Could not read config %s: %s", path, exc)
         return {}
+    if not isinstance(data, dict):
+        logger.warning("Ignoring config %s: expected a JSON object", path)
+        return {}
+    return data
 
 
 def find_project_root(start: Path | None = None) -> Path | None:
     """Walk upward from *start* looking for a .lydia/ or .git/ directory."""
     current = (start or Path.cwd()).resolve()
+    # ~/.lydia is the global config dir, not a project marker. Without this
+    # exclusion, any directory under $HOME with no .git would make the whole
+    # home directory the project root (and the tools' sandbox).
+    home = GLOBAL_DIR.parent.resolve()
     for candidate in (current, *current.parents):
-        if (candidate / PROJECT_DIR_NAME).is_dir() or (candidate / ".git").is_dir():
+        has_project_dir = (candidate / PROJECT_DIR_NAME).is_dir() and candidate != home
+        if has_project_dir or (candidate / ".git").is_dir():
             return candidate
     return None
 
@@ -150,8 +171,20 @@ def save_config_value(key: str, value: Any, path: Path) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
+# Fields that only accept a fixed set of values. Anything else would be
+# saved fine and then silently behave like the default.
+_CHOICES = {
+    "think": ("auto", "on", "off"),
+    "mode": ("ask", "auto", "plan"),
+    "provider": ("ollama", "gemini"),
+}
+
+
 def coerce_value(key: str, raw: str) -> Any:
     """Convert a CLI string into the appropriate type for the given config key."""
+    if key in _CHOICES and raw not in _CHOICES[key]:
+        raise ValueError(f"Invalid value for {key}: {raw!r}. Use one of: {', '.join(_CHOICES[key])}")
+
     for f in fields(LydiaConfig):
         if f.name != key:
             continue

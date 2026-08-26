@@ -48,8 +48,21 @@ def default_stream_fn(chunks: Iterator[ChatChunk]) -> StreamResult:
 def execute_tool(spec: ToolSpec | None, call: ToolCall, ctx: ToolContext) -> ToolResult:
     if spec is None:
         return ToolResult(ok=False, content=f"Unknown tool '{call.name}'.", summary="unknown tool")
+    if not isinstance(call.arguments, dict):
+        # The model (or a backend that sends arguments as text) produced
+        # something other than a JSON object; say so rather than failing on
+        # a TypeError deep inside the handler.
+        return ToolResult(
+            ok=False,
+            content=f"Arguments for {call.name} must be a JSON object, got: {str(call.arguments)[:200]!r}",
+            summary="bad arguments",
+        )
     try:
         return spec.handler(call.arguments, ctx)
+    except KeyError as exc:
+        # Handlers index args directly, so a KeyError here is the model
+        # leaving out a required argument (the JSON schema is advisory to it).
+        return ToolResult(ok=False, content=f"Missing required argument {exc} for {call.name}.", summary="error")
     except (ToolError, PathEscapesProjectError) as exc:
         return ToolResult(ok=False, content=str(exc), summary="error")
     except Exception as exc:  # noqa: BLE001 - surfaced to the model, not swallowed silently
@@ -80,25 +93,34 @@ def run_agent_turn(
     """
     schemas = [spec.schema() for spec in registry]
     by_name = {spec.name: spec for spec in registry}
+    start = len(messages)
 
-    for _ in range(MAX_TOOL_ITERATIONS):
-        request = [Message(role="system", content=system_prompt), *messages]
-        result = stream_fn(client.chat_stream(
-            model=model, messages=request, temperature=temperature,
-            num_ctx=num_ctx, think=think, tools=schemas, keep_alive=keep_alive,
-        ))
-        if not result.tool_calls:
-            messages.append(Message(role="assistant", content=result.content))
-            return result.content, result.stats
+    try:
+        for _ in range(MAX_TOOL_ITERATIONS):
+            request = [Message(role="system", content=system_prompt), *messages]
+            result = stream_fn(client.chat_stream(
+                model=model, messages=request, temperature=temperature,
+                num_ctx=num_ctx, think=think, tools=schemas, keep_alive=keep_alive,
+            ))
+            if not result.tool_calls:
+                messages.append(Message(role="assistant", content=result.content))
+                return result.content, result.stats
 
-        messages.append(Message(role="assistant", content=result.content, tool_calls=result.tool_calls))
-        for call in result.tool_calls:
-            if on_tool_call:
-                on_tool_call(call)
-            tool_result = execute_tool(by_name.get(call.name), call, ctx)
-            if on_tool_result:
-                on_tool_result(call, tool_result)
-            messages.append(Message(role="tool", content=tool_result.content))
+            messages.append(Message(role="assistant", content=result.content, tool_calls=result.tool_calls))
+            for call in result.tool_calls:
+                if on_tool_call:
+                    on_tool_call(call)
+                tool_result = execute_tool(by_name.get(call.name), call, ctx)
+                if on_tool_result:
+                    on_tool_result(call, tool_result)
+                messages.append(Message(role="tool", content=tool_result.content))
+    except BaseException:
+        # Ctrl-C at a confirmation prompt (or anything else escaping mid-turn)
+        # would leave an assistant tool call with no matching tool result in
+        # the caller's history, and some providers then reject every later
+        # turn of the session. Drop the half-finished exchange instead.
+        del messages[start:]
+        raise
 
     stop_message = (
         "I stopped after several tool calls without reaching an answer. "

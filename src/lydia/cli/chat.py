@@ -114,9 +114,11 @@ class ChatSession:
                 on_tool_result=ui.print_tool_result,
             )
         except KeyboardInterrupt:
+            self.messages.pop()  # drop the unanswered user turn; pairs with the loop's own rollback
             ui.console.print("\n[dim]interrupted[/dim]")
             return
         except OllamaError as exc:
+            self.messages.pop()  # same: no reply means no half-open turn left dangling
             ui.print_error(str(exc))
             return
         self.history.append(Message(role="assistant", content=reply))

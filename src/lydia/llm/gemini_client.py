@@ -21,6 +21,7 @@ enhancement, not required for correctness).
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterator
 from typing import Any
 
@@ -28,6 +29,8 @@ import httpx
 
 from lydia.llm.client import OllamaError, extract_error
 from lydia.llm.types import ChatChunk, Message, ModelInfo, ToolCall
+
+logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -84,8 +87,13 @@ def _to_gemini_contents(messages: list[Message]) -> tuple[str | None, list[dict[
                 parts.append({"text": message.content})
             for call in message.tool_calls:
                 parts.append({"functionCall": {"name": call.name, "args": call.arguments}})
-            contents.append({"role": "model", "parts": parts})
             pending_calls, call_index = list(message.tool_calls), 0
+            if not parts:
+                # An earlier turn where the model said nothing. Gemini rejects
+                # a model turn with no parts, so replaying it would 400 every
+                # later message of the session.
+                continue
+            contents.append({"role": "model", "parts": parts})
             continue
 
         if message.role == "tool":
@@ -117,13 +125,18 @@ def _to_gemini_tools(tools: list[dict] | None) -> list[dict[str, Any]] | None:
 
 
 def _parse_candidate(data: dict[str, Any]) -> ChatChunk:
+    if "error" in data:
+        # Gemini reports a mid-stream failure (quota, internal error) as an
+        # SSE event on the 200 stream; it must not read as an empty reply.
+        error = data["error"]
+        raise OllamaError(error.get("message", str(error)) if isinstance(error, dict) else str(error))
     candidates = data.get("candidates") or []
     if not candidates:
-        # A prompt-feedback-only response (e.g. safety block) has no
-        # candidates at all; surface it as empty content rather than
-        # raising, since the finishReason on a real block is on the
-        # (absent) candidate itself and there's nothing actionable to
-        # retry here — the caller sees an empty reply, not a crash.
+        block_reason = (data.get("promptFeedback") or {}).get("blockReason")
+        if block_reason:
+            raise OllamaError(f"Gemini refused the prompt (blockReason: {block_reason}).")
+        # No candidates and no stated reason: nothing to show, nothing to
+        # explain, so the caller just sees an empty reply.
         return ChatChunk(content="", done=True)
 
     candidate = candidates[0]
@@ -135,7 +148,12 @@ def _parse_candidate(data: dict[str, Any]) -> ChatChunk:
         if "functionCall" in p
     ]
 
-    done = candidate.get("finishReason") is not None
+    finish_reason = candidate.get("finishReason")
+    done = finish_reason is not None
+    if done and not parts and finish_reason not in ("STOP", "MAX_TOKENS"):
+        # SAFETY, RECITATION, MALFORMED_FUNCTION_CALL, ...: the model produced
+        # nothing and Gemini says why. An empty reply would hide that.
+        raise OllamaError(f"Gemini stopped without a reply (finishReason: {finish_reason}).")
     stats: dict[str, Any] = {}
     usage = data.get("usageMetadata")
     if done and usage:
@@ -242,10 +260,18 @@ class GeminiClient:
                     raw = line[len("data:"):].strip()
                     if not raw:
                         continue
-                    chunk = _parse_candidate(json.loads(raw))
+                    try:
+                        data = json.loads(raw)
+                    except json.JSONDecodeError:
+                        logger.warning("Skipping malformed Gemini stream event: %.120s", raw)
+                        continue
+                    chunk = _parse_candidate(data)
                     yield chunk
                     if chunk.done:
                         return
+                # Same guarantee as parse_chat_stream: a stream that ends
+                # without a finishReason was cut off, not finished.
+                raise OllamaError("The Gemini response stream ended before the reply finished.")
         except httpx.ConnectError as exc:
             raise GeminiConnectionError() from exc
         except httpx.HTTPError as exc:

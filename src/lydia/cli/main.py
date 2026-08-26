@@ -53,7 +53,7 @@ from lydia.tools.filesystem import apply_write, list_backups, restore_backup
 
 app = typer.Typer(
     name="lydia",
-    help="Lydia — a local AI coding agent powered by Ollama.",
+    help="Lydia: a local AI coding agent powered by Ollama.",
     add_completion=False,
     no_args_is_help=False,
 )
@@ -216,8 +216,15 @@ def build_semantic_index(
         if not client.has_model(EMBED_MODEL):
             ui.print_error(f"Embedding model not installed. Run `ollama pull {EMBED_MODEL}` first.")
             raise typer.Exit(1)
-        with ui.console.status("Indexing..."):
-            stats = build_index(root, client, force=force)
+        try:
+            with ui.console.status("Indexing..."):
+                stats = build_index(root, client, force=force)
+        except OllamaError as exc:
+            ui.print_error(str(exc))
+            raise typer.Exit(1)
+    if stats.error:
+        ui.print_error(f"Indexing stopped early: {stats.error}")
+        raise typer.Exit(1)
     ui.print_info(
         f"Scanned {stats.files_scanned} file(s); embedded {stats.files_indexed} changed file(s) "
         f"({stats.chunks_indexed} chunks); removed {stats.files_removed} deleted file(s) from the index."
@@ -297,7 +304,12 @@ def config_show() -> None:
         ui.console.print(f"[dim]project:[/dim] {project_config_path(root)}")
     unset_labels = {"model": "auto", "server_url": "not set (using local Ollama)", "api_key": "not set"}
     for key, value in vars(config).items():
-        shown = value if value is not None else f"[dim]{unset_labels.get(key, 'not set')}[/dim]"
+        if key in SECRET_KEYS and value is not None:
+            shown = "[dim]set[/dim]"
+        elif value is not None:
+            shown = value
+        else:
+            shown = f"[dim]{unset_labels.get(key, 'not set')}[/dim]"
         ui.console.print(f"  {key} = {shown}")
     # Provider API keys live in the OS keychain (config/secrets.py), never
     # in this JSON config, so they're not in vars(config) above — shown
@@ -372,7 +384,10 @@ def config_set(
     try:
         save_config_value(key, coerce_value(key, value), path)
     except (KeyError, ValueError) as exc:
-        ui.print_error(str(exc))
+        # KeyError.__str__ reprs its args (stray quotes around the whole
+        # message); args[0] is the plain string both settings.py's KeyError
+        # and ValueError are raised with. See coerce_value/save_config_value.
+        ui.print_error(str(exc.args[0]) if exc.args else str(exc))
         raise typer.Exit(1)
     ui.print_info(f"Set {key} = {value} in {path}")
 

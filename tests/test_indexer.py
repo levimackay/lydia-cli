@@ -8,6 +8,7 @@ from lydia.context.indexer import (
     chunk_file,
 )
 from lydia.database import sqlite as db
+from lydia.llm.client import OllamaConnectionError
 
 
 class FakeEmbedClient:
@@ -137,3 +138,32 @@ def test_build_index_force_reembeds_unchanged_files(tmp_path: Path) -> None:
     stats = build_index(tmp_path, client2, force=True)
     assert stats.files_indexed == 1
     assert client2.calls
+
+
+class UnreachableEmbedClient:
+    """Ollama is down: every embed call fails the same way."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def embed(self, model: str, inputs: list[str]) -> list[list[float]]:
+        self.calls += 1
+        raise OllamaConnectionError("http://localhost:11434")
+
+
+def test_build_index_stops_at_first_embedding_failure_and_keeps_the_index(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "b.py").write_text("y = 2\n")
+    build_index(tmp_path, FakeEmbedClient())
+    (tmp_path / "a.py").write_text("x = 2\n")  # both now need re-embedding
+    (tmp_path / "b.py").write_text("y = 3\n")
+
+    client = UnreachableEmbedClient()
+    stats = build_index(tmp_path, client)
+
+    assert client.calls == 1  # no per-file retry against a dead daemon
+    assert stats.files_indexed == 0
+    assert stats.error and "Cannot reach Ollama" in stats.error
+    conn = db.connect(tmp_path)
+    assert db.indexed_paths(conn) == {"a.py", "b.py"}  # unreached files not swept as stale
+    conn.close()

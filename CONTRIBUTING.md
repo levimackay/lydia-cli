@@ -50,8 +50,8 @@ lydia config set think off   # optional, much faster manual testing
 ## Running the tests
 
 ```bash
-.venv/bin/pytest                 # CLI package, 376 tests
-cd server && ../.venv/bin/pytest # server package, 14 tests, own pyproject.toml
+.venv/bin/pytest                 # CLI package, 413 tests
+cd server && ../.venv/bin/pytest # server package, 61 tests, own pyproject.toml
 ```
 
 Run a single file or test while iterating:
@@ -65,7 +65,7 @@ Unit tests never touch the network or a real filesystem outside `tmp_path`.
 If you're adding a tool or an LLM call site, follow the existing pattern
 (`httpx.MockTransport` for the client, a fake `ModelClient` for the agent
 loop) rather than requiring a live Ollama daemon for `pytest` to pass. CI
-runs this same suite on macOS across Python 3.11–3.13 for every push and
+runs this same suite on macOS across Python 3.11 to 3.14 for every push and
 PR.
 
 If your change needs verifying against a *real* Ollama daemon (a new tool,

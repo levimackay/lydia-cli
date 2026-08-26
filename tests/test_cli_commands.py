@@ -9,6 +9,8 @@ from typer.testing import CliRunner
 
 from lydia import __version__
 from lydia.cli.main import app
+from lydia.context.indexer import IndexStats
+from lydia.llm.client import OllamaError
 
 runner = CliRunner()
 
@@ -34,6 +36,15 @@ def test_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     assert __version__ in result.stdout
+
+
+def test_help_has_no_dash_and_lists_commands() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "Usage:" in result.stdout
+    assert "models" in result.stdout
+    assert "—" not in result.stdout  # em dash
+    assert "–" not in result.stdout  # en dash
 
 
 def test_analyze_on_empty_project(tmp_path: Path) -> None:
@@ -106,6 +117,16 @@ def test_config_set_and_show_global(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 def test_config_set_unknown_key_fails() -> None:
     result = runner.invoke(app, ["config", "set", "not_a_real_key", "value"])
     assert result.exit_code == 1
+    assert "Unknown config key 'not_a_real_key'" in result.stdout
+    # KeyError.__str__ reprs its args; a naive str(exc) would wrap the whole
+    # message in a spurious extra pair of quotes (e.g. `"Unknown config...`).
+    assert '"Unknown config key' not in result.stdout
+
+
+def test_config_set_bad_value_type_fails_cleanly() -> None:
+    result = runner.invoke(app, ["config", "set", "num_ctx", "not-a-number"])
+    assert result.exit_code == 1
+    assert '"' not in result.stdout  # no stray repr-quoting for ValueError either
 
 
 def test_config_set_project_requires_project_root(tmp_path: Path) -> None:
@@ -160,6 +181,20 @@ def test_config_show_reports_gemini_key_presence_not_value() -> None:
     assert "real-key-value" not in after.stdout
 
 
+def test_config_show_reports_api_key_presence_not_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_home = tmp_path / "home"
+    monkeypatch.setattr("lydia.config.settings.GLOBAL_DIR", fake_home / ".lydia")
+
+    before = runner.invoke(app, ["config", "show"])
+    assert "api_key = not set" in before.stdout
+
+    set_result = runner.invoke(app, ["config", "set", "api_key", "secret-bearer-token"])
+    assert set_result.exit_code == 0
+    after = runner.invoke(app, ["config", "show"])
+    assert "api_key = set" in after.stdout
+    assert "secret-bearer-token" not in after.stdout
+
+
 def test_index_refuses_when_provider_is_not_ollama(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fake_home = tmp_path / "home"
     monkeypatch.setattr("lydia.config.settings.GLOBAL_DIR", fake_home / ".lydia")
@@ -168,6 +203,48 @@ def test_index_refuses_when_provider_is_not_ollama(tmp_path: Path, monkeypatch: 
     result = runner.invoke(app, ["index"])
     assert result.exit_code == 1
     assert "ollama provider" in result.stdout
+
+
+class _FakeIndexClient:
+    def is_alive(self) -> bool:
+        return True
+
+    def has_model(self, name: str) -> bool:
+        return True
+
+    def close(self) -> None:
+        pass
+
+    def __enter__(self) -> "_FakeIndexClient":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
+
+def test_index_reports_error_and_exits_when_indexing_stops_early(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("lydia.cli.main.build_client", lambda config: _FakeIndexClient())
+    monkeypatch.setattr(
+        "lydia.cli.main.build_index",
+        lambda root, client, force=False: IndexStats(files_scanned=3, error="Ollama went away"),
+    )
+    result = runner.invoke(app, ["index"])
+    assert result.exit_code == 1
+    assert "Ollama went away" in result.stdout
+    assert "embedded" not in result.stdout  # never claim success once stats.error is set
+
+
+def test_index_reports_clean_error_when_ollama_drops_mid_build(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("lydia.cli.main.build_client", lambda config: _FakeIndexClient())
+
+    def _raise(root, client, force=False):
+        raise OllamaError("connection refused")
+
+    monkeypatch.setattr("lydia.cli.main.build_index", _raise)
+    result = runner.invoke(app, ["index"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)  # a clean typer.Exit(1), not a raw OllamaError traceback
+    assert "connection refused" in result.stdout
 
 
 def test_restore_list_empty(tmp_path: Path) -> None:

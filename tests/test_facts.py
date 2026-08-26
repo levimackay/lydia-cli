@@ -76,3 +76,14 @@ def test_load_facts_ignores_malformed_entries(tmp_path: Path) -> None:
     facts = load_facts(tmp_path)
     assert len(facts) == 1
     assert facts[0].text == "good"
+
+
+@pytest.mark.parametrize("body, expected_texts", [
+    ('[{"text": "hand added"}, "junk", 3]', ["hand added"]),  # no timestamp, non-object entries
+    ('{"text": "not a list"}', []),  # wrong top-level shape
+])
+def test_load_facts_tolerates_hand_edited_files(tmp_path: Path, body: str, expected_texts: list[str]) -> None:
+    path = memory_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_text(body)
+    assert [f.text for f in load_facts(tmp_path)] == expected_texts

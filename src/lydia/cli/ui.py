@@ -216,10 +216,12 @@ def _render_confirm_detail(detail: str):
 
 def format_stats(stats: dict) -> str | None:
     """Human-readable one-liner like '412 tokens · 9.3s · 44 tok/s'."""
+    truncated = stats.get("done_reason") == "length"
     eval_count = stats.get("eval_count")
     total_ns = stats.get("total_duration")
     if not eval_count or not total_ns:
-        return None
+        return "reply cut off by the token limit" if truncated else None
     seconds = total_ns / 1e9
     rate = eval_count / seconds if seconds else 0
-    return f"{eval_count} tokens · {seconds:.1f}s · {rate:.0f} tok/s"
+    line = f"{eval_count} tokens · {seconds:.1f}s · {rate:.0f} tok/s"
+    return f"{line} · cut off by token limit" if truncated else line

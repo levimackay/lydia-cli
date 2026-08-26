@@ -348,10 +348,11 @@ context. Each one names the files to touch and what "done" looks like.
   to trigger the model, ask a question, and hear a spoken reply. `lydia listen`
   runs the loop in the foreground; `lydia listen enable/disable/status` manage
   a launchd background agent. Uses `faster_whisper` for speech-to-text (locally,
-  ~150MB model, auto-downloaded), and `piper` for synthesis. Wake word and voices
-  are configurable. Logs to `~/.lydia/listen.log` when running in the background.
+  ~150MB model, auto-downloaded), and macOS's built-in `say` command for
+  synthesis. Wake word and voices are configurable. Logs to
+  `~/.lydia/listen.log` when running in the background.
   **Stretch goals:** support custom wake models (current default is Whisper's
-  built-in voice-activity detection), `piper` voice selection UI, follow-up
+  built-in voice-activity detection), a `say` voice selection UI, follow-up
   windows (stay listening after a reply without re-saying the wake word).
 
 **Model gotcha found while shipping M2:** not every model that emits

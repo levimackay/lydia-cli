@@ -44,7 +44,16 @@ def load_facts(project_root: Path) -> list[Fact]:
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Could not read memory %s: %s", path, exc)
         return []
-    return [Fact(text=d["text"], created_at=d["created_at"]) for d in raw if "text" in d]
+    if not isinstance(raw, list):
+        logger.warning("Ignoring memory %s: expected a JSON list", path)
+        return []
+    # Tolerate hand-edited entries: this runs at every session start, so a
+    # missing timestamp must not turn into a crash before the prompt.
+    return [
+        Fact(text=d["text"], created_at=d.get("created_at", ""))
+        for d in raw
+        if isinstance(d, dict) and "text" in d
+    ]
 
 
 def _save(project_root: Path, facts: list[Fact]) -> None:

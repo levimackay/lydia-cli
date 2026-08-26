@@ -8,6 +8,7 @@ import json
 import httpx
 import pytest
 
+from lydia.llm.client import OllamaError
 from lydia.llm.gemini_client import (
     GeminiAuthError,
     GeminiClient,
@@ -255,3 +256,37 @@ def test_api_key_sent_as_header_not_query_param() -> None:
     client.is_alive()
     assert captured["headers"]["x-goog-api-key"] == "super-secret-key"
     assert "super-secret-key" not in captured["url"]
+
+
+def test_empty_assistant_turns_are_dropped_from_contents() -> None:
+    """Gemini 400s on a model turn with no parts, so one empty reply must
+    not poison every later turn of the session."""
+    _, contents = _to_gemini_contents([
+        Message("user", "hi"),
+        Message("assistant", ""),
+        Message("user", "still there?"),
+    ])
+    assert [c["role"] for c in contents] == ["user", "user"]
+
+
+@pytest.mark.parametrize("event, reason", [
+    ({"promptFeedback": {"blockReason": "SAFETY"}}, "SAFETY"),
+    ({"error": {"code": 429, "message": "Quota exceeded", "status": "RESOURCE_EXHAUSTED"}}, "Quota exceeded"),
+    ({"candidates": [{"content": {"role": "model"}, "finishReason": "MALFORMED_FUNCTION_CALL"}]}, "MALFORMED_FUNCTION_CALL"),
+])
+def test_stream_events_that_mean_no_reply_raise_with_the_reason(event: dict, reason: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=sse(event))
+
+    with pytest.raises(OllamaError, match=reason):
+        list(make_client(handler).chat_stream("gemini-2.5-flash", [Message("user", "hi")]))
+
+
+def test_stream_cut_off_before_finish_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=sse(
+            {"candidates": [{"content": {"parts": [{"text": "Hel"}], "role": "model"}}]},
+        ))
+
+    with pytest.raises(OllamaError, match="before the reply finished"):
+        list(make_client(handler).chat_stream("gemini-2.5-flash", [Message("user", "hi")]))

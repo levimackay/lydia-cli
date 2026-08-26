@@ -20,7 +20,7 @@ from lydia.llm.client import (
     OllamaError,
     build_chat_payload,
     extract_error,
-    parse_chat_line,
+    parse_chat_stream,
 )
 from lydia.llm.types import ChatChunk, Message, ModelInfo
 
@@ -111,14 +111,7 @@ class RemoteClient:
         try:
             with self._client.stream("POST", "/v1/chat", json=payload) as response:
                 self._raise_for_status(response.status_code, lambda: response.read().decode("utf-8", errors="replace"))
-                for line in response.iter_lines():
-                    if not line.strip():
-                        continue
-                    chunk = parse_chat_line(line)
-                    if chunk is not None:
-                        yield chunk
-                        if chunk.done:
-                            return
+                yield from parse_chat_stream(response.iter_lines())
         except httpx.ConnectError as exc:
             raise RemoteConnectionError(self.base_url) from exc
         except httpx.HTTPError as exc:

@@ -333,15 +333,15 @@ That's the entire point: a mistake gets caught automatically, on GitHub's
 infrastructure, without anyone needing to have remembered to run `pytest`
 themselves before pushing.
 
-**Why three Python versions.** The `strategy: matrix` block repeats this
-entire process three separate times, once each for Python 3.11, 3.12, and
-3.13, meaning six full test runs happen per push (three Python versions
-× two packages), all in parallel. This matters because Python itself
-changes slightly from one release to the next (a function's exact
+**Why four Python versions.** The `strategy: matrix` block repeats this
+entire process four separate times, once each for Python 3.11, 3.12,
+3.13, and 3.14, meaning eight full test runs happen per push (four Python
+versions × two packages), all in parallel. This matters because Python
+itself changes slightly from one release to the next (a function's exact
 behavior, a warning that becomes an error, a default that flips), and
 code that works perfectly on the newest version isn't guaranteed to work
 on an older one still in wide use, or vice versa. Testing against all
-three of the versions Lydia claims to support catches a break that only
+four of the versions Lydia claims to support catches a break that only
 shows up on the oldest or newest one, instead of assuming "it worked on my
 machine" generalizes to everyone else's.
 

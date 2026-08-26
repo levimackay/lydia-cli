@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "lydia-cli"
 version = "0.1.0"
-description = "Lydia — a local AI coding agent powered by Ollama. No API keys required."
+description = "Lydia: a local AI coding agent powered by Ollama. No API keys required."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
