@@ -258,6 +258,21 @@ next, and the reasoning behind past calls, so check it before starting
 something new. Bug reports and PRs welcome; a few have already landed
 from outside contributors.
 
+## How this was built
+
+Lydia's implementation was written with heavy AI assistance. I am saying that
+up front rather than letting anyone assume otherwise.
+
+What is mine is the part that decides what this is: the architecture, the tool
+surface and its safety model, what belongs in the agent loop and what does not,
+the call to keep it local-only with no API keys, and the review of every change
+that lands. Outside contributors have sent patches and I read, tested and merged
+them, and everything that goes in has to pass the suites above on Python 3.11
+through 3.13. That is the work I would defend in a room.
+
+The same disclosure applies to
+[canvas-risk](https://github.com/levimackay/canvas-risk).
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
