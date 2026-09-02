@@ -248,7 +248,7 @@ for the full layering rules and integration gotchas.
 
 ```bash
 pytest              # CLI suite, 413 tests, no Ollama required
-cd server && pytest # server suite, 61 tests
+cd server && pytest # server suite, 62 tests
 ```
 
 All hermetic: mocked HTTP transports, throwaway `tmp_path` repos, no
