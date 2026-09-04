@@ -96,6 +96,7 @@ which one to add, not a crash. Building from source or contributing? See
 | `lydia ask "why is this failing?"` | One-shot question, no tools |
 | `lydia ask "..." --yes` | Same, with full tool access, for scripts/CI |
 | `lydia analyze` | Project summary |
+| `lydia models` | List models installed in Ollama |
 | `lydia index` | Build the semantic search index |
 | `lydia init` | Create `.lydia/` project config |
 | `lydia config show` / `set <key> <value>` | View/change configuration |
@@ -209,7 +210,10 @@ can't skip a source and improvise instead.
 **Automations.** Plain-English scheduled tasks: `lydia automate "every
 morning at 8, check my email and canvas"`. Runs in a stripped-down,
 deterministic mode on a 5-minute heartbeat (`lydia automations schedule
-enable`), catching up after sleep.
+enable`), catching up after sleep. By default each run pushes a phone
+notification via [ntfy.sh](https://ntfy.sh) when it finishes (`lydia auth
+login ntfy` to connect it); an automation can instead notify with a macOS
+notification or not at all.
 
 **Voice mode.** Say a wake word, ask a question, hear a reply, fully
 local (openWakeWord + Whisper + macOS `say`). `lydia listen` (foreground)
