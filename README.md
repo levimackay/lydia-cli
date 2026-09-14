@@ -186,11 +186,12 @@ both refuse outright rather than doing that silently.
 
 | Tool | Risk | Behavior |
 |---|---|---|
-| `read_file`, `search_code`/`search_semantic`, `list_dir`, `find_files`, `git_status`/`diff` | safe | Runs immediately |
+| `read_file`, `search_code`/`search_semantic`, `list_dir`, `find_files`, `git_status`/`diff`/`add` | safe | Runs immediately |
 | `write_file`, `edit_file`, `multi_edit_file`, `delete_file` | confirm | Diff + y/n, backed up to `.lydia/backups/` |
 | `git_commit`, `git_push` | confirm | Shows message/target, y/n |
 | `run_command` | policy | Follows session mode; a destructive pattern always asks regardless of mode |
 | `remember` | safe | Saves a fact to `.lydia/memory.json` |
+| `update_todos` | safe | Shows a visible, updatable checklist for multi-step tasks |
 
 `mode` (`ask` default / `auto` skips confirmation for routine actions,
 still asks for anything dangerous / `plan` offers no mutating tool at
